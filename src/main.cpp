@@ -23,8 +23,8 @@
 
 // --- SENSOR CALIBRATION (ESP32 is 12-bit: 0-4095) ---
 // Need to calibrate for your specific soil sensor
-const int AIR_VAL = 3200;    
-const int WATER_VAL = 1400; 
+const int AIR_VAL = 4095;    
+const int WATER_VAL = 1670; 
 
 // --- PIN DEFINITIONS ---
 #define PIN_PUMP        26  // Water Pump Relay
@@ -32,7 +32,7 @@ const int WATER_VAL = 1400;
 #define PIN_HEATER      14  // Heater / Halogen Lamp Relay
 #define PIN_TRIG        5   // Ultrasonic Trig
 #define PIN_ECHO        34  // Ultrasonic Echo
-#define PIN_SOIL        35  // Soil Moisture Analog
+#define PIN_SOIL        32  // Soil Moisture Analog
 
 // ==========================================
 // 2. OBJECTS & VARIABLES
