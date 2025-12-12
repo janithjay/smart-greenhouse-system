@@ -165,6 +165,7 @@ BLYNK_CONNECTED() {
 // ==========================================
 void setup() {
   Serial.begin(115200);
+  delay(2000); // Wait for serial monitor to stabilize
   
   // Initialize Watchdog (30s timeout)
   esp_task_wdt_init(30, true); 
