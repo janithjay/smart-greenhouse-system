@@ -3,10 +3,13 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <LiquidCrystal_I2C.h>
 #include <esp_task_wdt.h>
 #include <Adafruit_AHTX0.h>
 #include <ScioSense_ENS160.h>
+#include <WiFiManager.h>
+#include <Preferences.h>
 #include "secrets.h"
 
 #define BLYNK_PRINT Serial
@@ -35,18 +38,18 @@
 // 1. CONFIGURATION & PINOUT
 // ==========================================
 
-// --- SCOTCH BONNET PARAMETERS ---
-// Welimada nights are cold (<18°C). Peppers stunt below 20°C.
-#define TEMP_MIN_NIGHT  20.0  // Heater ON below this
-#define TEMP_MAX_DAY    30.0  // Fan ON above this
-#define HUM_MAX         75.0  // Fan ON above this (Prevent Fungal/Botrytis)
-#define SOIL_DRY        40    // Pump ON below this % (irrigate)
-#define SOIL_WET        70    // Pump OFF above this % (prevent root rot)
+Preferences preferences;
+
+// --- CONFIGURABLE PARAMETERS (Loaded from NVS) ---
+float TEMP_MIN_NIGHT = 20.0;  // Heater ON below this
+float TEMP_MAX_DAY   = 30.0;  // Fan ON above this
+float HUM_MAX        = 75.0;  // Fan ON above this
+int   SOIL_DRY       = 40;    // Pump ON below this %
+int   SOIL_WET       = 70;    // Pump OFF above this %
 
 // --- SENSOR CALIBRATION (ESP32 is 12-bit: 0-4095) ---
-// Need to calibrate for specific soil sensor
-const int AIR_VAL = 4095;    
-const int WATER_VAL = 1670; 
+int AIR_VAL   = 4095;    
+int WATER_VAL = 1670;  
 
 // --- PIN DEFINITIONS ---
 #define PIN_PUMP        26  // Water Pump Relay
@@ -96,9 +99,61 @@ void TaskInterface(void *pvParameters);
 
 // --- AWS CALLBACK ---
 void messageHandler(char* topic, byte* payload, unsigned int length) {
-  //  Add logic here if want to control via AWS
   Serial.print("AWS CMD: "); Serial.println(topic);
+  
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, payload, length);
+
+  if (error) {
+    Serial.print("deserializeJson() failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  // Check for configuration updates
+  bool configChanged = false;
+  
+  if (doc.containsKey("temp_min")) {
+    TEMP_MIN_NIGHT = doc["temp_min"];
+    preferences.putFloat("temp_min", TEMP_MIN_NIGHT);
+    configChanged = true;
+  }
+  if (doc.containsKey("temp_max")) {
+    TEMP_MAX_DAY = doc["temp_max"];
+    preferences.putFloat("temp_max", TEMP_MAX_DAY);
+    configChanged = true;
+  }
+  if (doc.containsKey("hum_max")) {
+    HUM_MAX = doc["hum_max"];
+    preferences.putFloat("hum_max", HUM_MAX);
+    configChanged = true;
+  }
+  if (doc.containsKey("soil_dry")) {
+    SOIL_DRY = doc["soil_dry"];
+    preferences.putInt("soil_dry", SOIL_DRY);
+    configChanged = true;
+  }
+  if (doc.containsKey("soil_wet")) {
+    SOIL_WET = doc["soil_wet"];
+    preferences.putInt("soil_wet", SOIL_WET);
+    configChanged = true;
+  }
+  if (doc.containsKey("cal_air")) {
+    AIR_VAL = doc["cal_air"];
+    preferences.putInt("cal_air", AIR_VAL);
+    configChanged = true;
+  }
+  if (doc.containsKey("cal_water")) {
+    WATER_VAL = doc["cal_water"];
+    preferences.putInt("cal_water", WATER_VAL);
+    configChanged = true;
+  }
+  
+  if (configChanged) {
+    Serial.println("Configuration Updated & Saved!");
+  }
 }
+
 
 // ==========================================
 // BLYNK HANDLERS
@@ -166,6 +221,35 @@ BLYNK_CONNECTED() {
 void setup() {
   Serial.begin(115200);
   delay(2000); // Wait for serial monitor to stabilize
+
+  // --- LOAD PREFERENCES ---
+  preferences.begin("greenhouse", false); // Namespace "greenhouse", Read/Write
+  TEMP_MIN_NIGHT = preferences.getFloat("temp_min", 20.0);
+  TEMP_MAX_DAY   = preferences.getFloat("temp_max", 30.0);
+  HUM_MAX        = preferences.getFloat("hum_max", 75.0);
+  SOIL_DRY       = preferences.getInt("soil_dry", 40);
+  SOIL_WET       = preferences.getInt("soil_wet", 70);
+  AIR_VAL        = preferences.getInt("cal_air", 4095);
+  WATER_VAL      = preferences.getInt("cal_water", 1670);
+  Serial.println("Config Loaded from NVS");
+
+  // --- WIFI MANAGER ---
+  WiFiManager wm;
+  // wm.resetSettings(); // Uncomment to wipe settings for testing
+  
+  // Custom parameters for Blynk/AWS could be added here
+  
+  bool res;
+  res = wm.autoConnect("Greenhouse-Setup"); // AP Name
+
+  if(!res) {
+      Serial.println("Failed to connect");
+      // ESP.restart();
+  } 
+  else {
+      Serial.println("connected...yeey :)");
+      wifiConnected = true;
+  }
   
   // Initialize Watchdog (30s timeout)
   esp_task_wdt_init(30, true); 
@@ -338,8 +422,12 @@ void TaskInterface(void *pvParameters) {
 
 // --- TASK 4: CLOUD CONNECTIVITY ---
 void TaskConnectivity(void *pvParameters) {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  // WiFi is already connected via WiFiManager in setup()
+  // But we ensure we are in STA mode
+  if (WiFi.status() != WL_CONNECTED) {
+     // If we lost it between setup and here
+     WiFi.begin(); 
+  }
 
   // Wait for WiFi connection before initializing Blynk
   while (WiFi.status() != WL_CONNECTED) {
