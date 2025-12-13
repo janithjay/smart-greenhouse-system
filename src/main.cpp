@@ -58,6 +58,7 @@ int WATER_VAL = 1670;
 #define PIN_TRIG        5   // Ultrasonic Trig
 #define PIN_ECHO        34  // Ultrasonic Echo
 #define PIN_SOIL        32  // Soil Moisture Analog
+#define PIN_RESET_BTN   4  // Boot Button (Hold 5s to reset WiFi)
 
 // ==========================================
 // 2. OBJECTS & VARIABLES
@@ -81,6 +82,8 @@ volatile bool pumpStatus = false;
 volatile bool fanStatus = false;   
 volatile bool heaterStatus = false; 
 volatile bool wifiConnected = false;
+volatile bool reconfigureWiFi = false;
+volatile bool portalRunning = false;
 
 // --- MANUAL MODE VARIABLES ---
 volatile bool manualMode = false;      // false = Auto, true = Manual
@@ -261,6 +264,7 @@ void setup() {
   pinMode(PIN_PUMP, OUTPUT); digitalWrite(PIN_PUMP, LOW);
   pinMode(PIN_FAN, OUTPUT); digitalWrite(PIN_FAN, LOW);
   pinMode(PIN_HEATER, OUTPUT); digitalWrite(PIN_HEATER, LOW);
+  pinMode(PIN_RESET_BTN, INPUT_PULLUP);
 
   // Initialize LCD
   lcd.init(); lcd.backlight();
@@ -398,7 +402,35 @@ void TaskControlSystem(void *pvParameters) {
 
 // --- TASK 3: USER INTERFACE ---
 void TaskInterface(void *pvParameters) {
+  unsigned long btnPressStart = 0;
+  bool btnPressed = false;
+
   for (;;) {
+    // Check Reset Button (Active LOW)
+    if (digitalRead(PIN_RESET_BTN) == LOW) {
+      if (!btnPressed) {
+        btnPressed = true;
+        btnPressStart = millis();
+      } else {
+        // Check if button pressed
+        if (millis() - btnPressStart > 1) {
+          reconfigureWiFi = true;
+          btnPressed = false; // Prevent multiple triggers
+        }
+      }
+    } else {
+      btnPressed = false;
+    }
+
+    if (portalRunning) {
+        lcd.setCursor(0, 0); lcd.print("WiFi Setup Mode ");
+        lcd.setCursor(0, 1); lcd.print("Connect to AP:  ");
+        lcd.setCursor(0, 2); lcd.print("Greenhouse-Setup");
+        lcd.setCursor(0, 3); lcd.print("                ");
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        continue;
+    }
+
     // Line 0: Temp & Heater Status
     lcd.setCursor(0, 0);
     lcd.printf("T:%.1f H:%s ", currentTemp, heaterStatus ? "ON" : "OFF");
@@ -422,6 +454,10 @@ void TaskInterface(void *pvParameters) {
 
 // --- TASK 4: CLOUD CONNECTIVITY ---
 void TaskConnectivity(void *pvParameters) {
+  WiFiManager wm;
+  wm.setConfigPortalBlocking(false);
+  wm.setConfigPortalTimeout(180); // 3 minutes timeout
+
   // WiFi is already connected via WiFiManager in setup()
   // But we ensure we are in STA mode
   if (WiFi.status() != WL_CONNECTED) {
@@ -450,6 +486,15 @@ void TaskConnectivity(void *pvParameters) {
   client.setCallback(messageHandler);
 
   for (;;) {
+      wm.process(); // Process WiFiManager (Non-blocking)
+      portalRunning = wm.getConfigPortalActive();
+
+      if (reconfigureWiFi) {
+          Serial.println("Starting Config Portal (Non-Blocking)...");
+          wm.startConfigPortal("Greenhouse-Setup");
+          reconfigureWiFi = false;
+      }
+
       if (WiFi.status() == WL_CONNECTED) {
           wifiConnected = true;
           
