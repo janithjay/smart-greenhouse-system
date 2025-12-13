@@ -64,7 +64,7 @@ int WATER_VAL = 1670;
 // 2. OBJECTS & VARIABLES
 // ==========================================
 
-LiquidCrystal_I2C lcd(0x27, 16, 4);
+LiquidCrystal_I2C lcd(0x27, 20, 4);
 Adafruit_AHTX0 aht;
 ScioSense_ENS160 ens160(ENS160_I2CADDR_1);
 WiFiClientSecure net;
@@ -82,8 +82,11 @@ volatile bool pumpStatus = false;
 volatile bool fanStatus = false;   
 volatile bool heaterStatus = false; 
 volatile bool wifiConnected = false;
+volatile bool awsConnected = false;
 volatile bool reconfigureWiFi = false;
 volatile bool portalRunning = false;
+volatile bool stopPortalRequest = false;
+volatile bool btnRequest = false;
 
 // --- MANUAL MODE VARIABLES ---
 volatile bool manualMode = false;      // false = Auto, true = Manual
@@ -157,6 +160,16 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
   }
 }
 
+// --- INTERRUPT SERVICE ROUTINE (ISR) ---
+void IRAM_ATTR isrResetButton() {
+    static unsigned long last_interrupt_time = 0;
+    unsigned long interrupt_time = millis();
+    // Debounce: 200ms
+    if (interrupt_time - last_interrupt_time > 200) {
+        btnRequest = true;
+    }
+    last_interrupt_time = interrupt_time;
+}
 
 // ==========================================
 // BLYNK HANDLERS
@@ -223,9 +236,21 @@ BLYNK_CONNECTED() {
 // ==========================================
 void setup() {
   Serial.begin(115200);
-  delay(2000); // Wait for serial monitor to stabilize
+  
+  // 1. Initialize Hardware (LCD, I2C, Pins)
+  Wire.begin(21, 22);
+  lcd.init(); 
+  lcd.backlight();
+  lcd.setCursor(0, 0); lcd.print("Smart GreenHouse");
+  lcd.setCursor(0, 1); lcd.print("System Starting...");
 
-  // --- LOAD PREFERENCES ---
+  pinMode(PIN_PUMP, OUTPUT); digitalWrite(PIN_PUMP, LOW);
+  pinMode(PIN_FAN, OUTPUT); digitalWrite(PIN_FAN, LOW);
+  pinMode(PIN_HEATER, OUTPUT); digitalWrite(PIN_HEATER, LOW);
+  pinMode(PIN_RESET_BTN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_RESET_BTN), isrResetButton, FALLING);
+
+  // 2. Load Preferences
   preferences.begin("greenhouse", false); // Namespace "greenhouse", Read/Write
   TEMP_MIN_NIGHT = preferences.getFloat("temp_min", 20.0);
   TEMP_MAX_DAY   = preferences.getFloat("temp_max", 30.0);
@@ -236,42 +261,7 @@ void setup() {
   WATER_VAL      = preferences.getInt("cal_water", 1670);
   Serial.println("Config Loaded from NVS");
 
-  // --- WIFI MANAGER ---
-  WiFiManager wm;
-  // wm.resetSettings(); // Uncomment to wipe settings for testing
-  
-  // Custom parameters for Blynk/AWS could be added here
-  
-  bool res;
-  res = wm.autoConnect("Greenhouse-Setup"); // AP Name
-
-  if(!res) {
-      Serial.println("Failed to connect");
-      // ESP.restart();
-  } 
-  else {
-      Serial.println("connected...yeey :)");
-      wifiConnected = true;
-  }
-  
-  // Initialize Watchdog (30s timeout)
-  esp_task_wdt_init(30, true); 
-
-  // Initialize I2C
-  Wire.begin(21, 22);
-
-  // Initialize Relays (Active - HIGH)
-  pinMode(PIN_PUMP, OUTPUT); digitalWrite(PIN_PUMP, LOW);
-  pinMode(PIN_FAN, OUTPUT); digitalWrite(PIN_FAN, LOW);
-  pinMode(PIN_HEATER, OUTPUT); digitalWrite(PIN_HEATER, LOW);
-  pinMode(PIN_RESET_BTN, INPUT_PULLUP);
-
-  // Initialize LCD
-  lcd.init(); lcd.backlight();
-  lcd.setCursor(0, 0); lcd.print("Smart GreenHouse");
-  lcd.setCursor(0, 1); lcd.print("System Start...");
-
-  // Initialize Sensors
+  // 3. Initialize Sensors
   bool sensorsOk = true;
   if (!aht.begin()) { Serial.println("AHT Error"); sensorsOk = false; }
   if (!ens160.begin()) { Serial.println("ENS Error"); sensorsOk = false; }
@@ -282,7 +272,10 @@ void setup() {
     delay(2000);
   }
 
-  // Create RTOS Tasks
+  // Initialize Watchdog (30s timeout)
+  esp_task_wdt_init(30, true); 
+
+  // 4. Create RTOS Tasks
   // Core 1 (Application Logic)
   xTaskCreatePinnedToCore(TaskReadSensors, "Sensors", 4096, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(TaskControlSystem, "Control", 4096, NULL, 2, NULL, 1);
@@ -402,80 +395,93 @@ void TaskControlSystem(void *pvParameters) {
 
 // --- TASK 3: USER INTERFACE ---
 void TaskInterface(void *pvParameters) {
-  unsigned long btnPressStart = 0;
-  bool btnPressed = false;
+  unsigned long lastLcdUpdate = 0;
 
   for (;;) {
-    // Check Reset Button (Active LOW)
-    if (digitalRead(PIN_RESET_BTN) == LOW) {
-      if (!btnPressed) {
-        btnPressed = true;
-        btnPressStart = millis();
-      } else {
-        // Check if button pressed
-        if (millis() - btnPressStart > 1) {
-          reconfigureWiFi = true;
-          btnPressed = false; // Prevent multiple triggers
+    // Check Button Flag from ISR
+    if (btnRequest) {
+        btnRequest = false;
+        if (portalRunning) {
+            stopPortalRequest = true;
+            lcd.setCursor(0, 0); lcd.print("Exiting Setup...    ");
+        } else {
+            reconfigureWiFi = true;
+            // Immediate Feedback
+            lcd.setCursor(0, 0); lcd.print("Entering Setup...   ");
+            lcd.setCursor(0, 1); lcd.print("Please Wait...      ");
+            lcd.setCursor(0, 2); lcd.print("                    ");
+            lcd.setCursor(0, 3); lcd.print("                    ");
+            
+            // We do NOT disconnect here anymore, to allow simultaneous operation
+            // WiFi.disconnect(); 
         }
-      }
-    } else {
-      btnPressed = false;
     }
 
-    if (portalRunning) {
-        lcd.setCursor(0, 0); lcd.print("WiFi Setup Mode ");
-        lcd.setCursor(0, 1); lcd.print("Connect to AP:  ");
-        lcd.setCursor(0, 2); lcd.print("Greenhouse-Setup");
-        lcd.setCursor(0, 3); lcd.print("                ");
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        continue;
+    // Update LCD every 500ms
+    if (millis() - lastLcdUpdate > 500) {
+        lastLcdUpdate = millis();
+
+        if (portalRunning || reconfigureWiFi) {
+            lcd.setCursor(0, 0); lcd.print("WiFi Setup Mode     ");
+            lcd.setCursor(0, 1); lcd.print("Connect to AP:      ");
+            lcd.setCursor(0, 2); lcd.print("Greenhouse-Setup    ");
+            lcd.setCursor(0, 3); lcd.print("                    ");
+        } else {
+            // Line 0: Temp & Heater
+            lcd.setCursor(0, 0);
+            lcd.printf("Temp:%4.1fC  Heat:%s", currentTemp, heaterStatus ? "ON " : "OFF");
+            
+            // Line 1: Humidity & Fan
+            lcd.setCursor(0, 1);
+            lcd.printf("Hum :%3d%%   Fan :%s", (int)currentHum, fanStatus ? "ON " : "OFF");
+
+            // Line 2: Soil & Pump
+            lcd.setCursor(0, 2);
+            lcd.printf("Soil:%3d%%   Pump:%s", soilMoisture, pumpStatus ? "ON " : "OFF");
+
+            // Line 3: CO2 & AWS Status
+            lcd.setCursor(0, 3);
+            if (awsConnected) {
+                lcd.printf("CO2 :%-4d   AWS :ON ", eco2);
+            } else if (wifiConnected) {
+                lcd.printf("CO2 :%-4d   AWS :CON", eco2);
+            } else {
+                lcd.printf("CO2 :%-4d   AWS :OFF", eco2);
+            }
+        }
     }
 
-    // Line 0: Temp & Heater Status
-    lcd.setCursor(0, 0);
-    lcd.printf("T:%.1f H:%s ", currentTemp, heaterStatus ? "ON" : "OFF");
-    lcd.print("Hu:"); lcd.print((int)currentHum); lcd.print("%");
-    
-    // Line 1: Soil & Pump Status
-    lcd.setCursor(0, 1);
-    lcd.printf("Soil:%d%%     P:%s", soilMoisture, pumpStatus ? "ON   " : "OFF");
-
-    // Line 2: Air Quality
-    lcd.setCursor(0, 2);
-    lcd.printf("CO2 :%d    FAN:%s", eco2, fanStatus ? "ON  " : "OFF");
-
-    // Line 3: Connection
-    lcd.setCursor(0, 3);
-    lcd.print(wifiConnected ? "AWS :ONLINE        " : "AWS :CONNECTING");
-
-    vTaskDelay(500 / portTICK_PERIOD_MS); 
+    vTaskDelay(100 / portTICK_PERIOD_MS); 
   }
 }
 
 // --- TASK 4: CLOUD CONNECTIVITY ---
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entered config mode");
+  portalRunning = true;
+}
+
 void TaskConnectivity(void *pvParameters) {
   WiFiManager wm;
-  wm.setConfigPortalBlocking(false);
+  wm.setAPCallback(configModeCallback);
   wm.setConfigPortalTimeout(180); // 3 minutes timeout
 
-  // WiFi is already connected via WiFiManager in setup()
-  // But we ensure we are in STA mode
-  if (WiFi.status() != WL_CONNECTED) {
-     // If we lost it between setup and here
-     WiFi.begin(); 
+  // 1. Initial Connection (Blocking, but updates portalRunning via callback)
+  // This allows TaskInterface to show "WiFi Setup Mode" on LCD while this task blocks.
+  if(!wm.autoConnect("Greenhouse-Setup")) {
+      Serial.println("Failed to connect");
+  } else {
+      Serial.println("Connected!");
+      wifiConnected = true;
   }
-
-  // Wait for WiFi connection before initializing Blynk
-  while (WiFi.status() != WL_CONNECTED) {
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi Connected!");
-  wifiConnected = true;
+  portalRunning = false; 
+  
+  // Switch to non-blocking for runtime button triggers
+  wm.setConfigPortalBlocking(false);
 
   // Initialize Blynk
   Blynk.config(BLYNK_AUTH_TOKEN);
-  Blynk.connect();
+  // Blynk.connect(); // Don't block here, let the loop handle it
 
   // Load AWS Certificates
   net.setCACert(AWS_CERT_CA);
@@ -495,27 +501,49 @@ void TaskConnectivity(void *pvParameters) {
           reconfigureWiFi = false;
       }
 
+      if (stopPortalRequest) {
+          Serial.println("Stopping Config Portal...");
+          wm.stopConfigPortal();
+          stopPortalRequest = false;
+          vTaskDelay(100 / portTICK_PERIOD_MS); // Allow stack to settle
+      }
+
+      // Run Cloud tasks if WiFi is Connected (Even if Portal is running)
       if (WiFi.status() == WL_CONNECTED) {
           wifiConnected = true;
           
-          // Run Blynk
-          Blynk.run();
+          // Ensure Blynk is connected (Non-blocking retry)
+          static unsigned long lastBlynkAttempt = 0;
+          if (!Blynk.connected()) {
+             // Only try to connect every 15 seconds to avoid blocking the loop
+             if (millis() - lastBlynkAttempt > 15000) {
+                 lastBlynkAttempt = millis();
+                 // Try to connect with a short timeout (2s)
+                 Blynk.connect(2000); 
+             }
+          }
+          
+          // Run Blynk (Only if connected to avoid internal blocking retries)
+          if (Blynk.connected()) {
+             Blynk.run();
+          }
           
           // Update Blynk with sensor data (every 2 seconds)
           static unsigned long lastBlynkUpdate = 0;
           if (millis() - lastBlynkUpdate > 2000) {
             // Send sensor readings to Blynk app
-            Blynk.virtualWrite(VPIN_TEMP, currentTemp);
-            Blynk.virtualWrite(VPIN_HUM, currentHum);
-            Blynk.virtualWrite(VPIN_SOIL, soilMoisture);
-            Blynk.virtualWrite(VPIN_CO2, eco2);
-            Blynk.virtualWrite(VPIN_TANK_LEVEL, waterTankLevel);
-            
-            // Send device status LEDs
-            Blynk.virtualWrite(VPIN_PUMP_LED, pumpStatus ? 255 : 0);
-            Blynk.virtualWrite(VPIN_FAN_LED, fanStatus ? 255 : 0);
-            Blynk.virtualWrite(VPIN_HEATER_LED, heaterStatus ? 255 : 0);
-            
+            if (Blynk.connected()) {
+                Blynk.virtualWrite(VPIN_TEMP, currentTemp);
+                Blynk.virtualWrite(VPIN_HUM, currentHum);
+                Blynk.virtualWrite(VPIN_SOIL, soilMoisture);
+                Blynk.virtualWrite(VPIN_CO2, eco2);
+                Blynk.virtualWrite(VPIN_TANK_LEVEL, waterTankLevel);
+                
+                // Send device status LEDs
+                Blynk.virtualWrite(VPIN_PUMP_LED, pumpStatus ? 255 : 0);
+                Blynk.virtualWrite(VPIN_FAN_LED, fanStatus ? 255 : 0);
+                Blynk.virtualWrite(VPIN_HEATER_LED, heaterStatus ? 255 : 0);
+            }
             lastBlynkUpdate = millis();
           }
           
@@ -523,19 +551,25 @@ void TaskConnectivity(void *pvParameters) {
           time_t now = time(nullptr);
           if (now < 8 * 3600 * 2) { 
             configTime(0, 0, "pool.ntp.org", "time.nist.gov"); 
-            delay(1000);
           }
           
           if (!client.connected()) {
-              Serial.print("AWS Connecting...");
-              if (client.connect("GreenHouse_Unit")) {
-                  Serial.println("CONNECTED");
-                  client.subscribe("greenhouse/commands");
-              } else {
-                  Serial.print("Failed: "); Serial.println(client.state());
-                  vTaskDelay(5000 / portTICK_PERIOD_MS);
+              awsConnected = false;
+              // Only try to connect to AWS occasionally to avoid spamming logs/blocking
+              static unsigned long lastAwsAttempt = 0;
+              if (millis() - lastAwsAttempt > 5000) {
+                  lastAwsAttempt = millis();
+                  Serial.print("AWS Connecting...");
+                  if (client.connect("GreenHouse_Unit")) {
+                      Serial.println("CONNECTED");
+                      client.subscribe("greenhouse/commands");
+                      awsConnected = true;
+                  } else {
+                      Serial.print("Failed: "); Serial.println(client.state());
+                  }
               }
           } else {
+              awsConnected = true;
               client.loop();
               
               // Non-blocking publish timer
@@ -555,10 +589,12 @@ void TaskConnectivity(void *pvParameters) {
               }
           }
       } else {
-          wifiConnected = false;
-          Serial.println("WiFi Lost");
-          WiFi.reconnect();
+          // WiFi Lost
+          if (!portalRunning) {
+             wifiConnected = false;
+             awsConnected = false;
+          }
       }
-      vTaskDelay(100 / portTICK_PERIOD_MS);
+      vTaskDelay(50 / portTICK_PERIOD_MS); // Yield to other tasks
   }
 }
