@@ -679,20 +679,26 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 void TaskConnectivity(void *pvParameters) {
   WiFiManager wm;
   wm.setAPCallback(configModeCallback);
-  wm.setConfigPortalTimeout(180); // 3 minutes timeout
+  
+  // --- NON-BLOCKING BOOT STRATEGY ---
+  // 1. Don't block indefinitely. Try to connect for 10s.
+  // 2. If fail, DO NOT start AP automatically. Just continue offline.
+  // 3. AP is only started if user presses the button.
+  
+  wm.setConnectTimeout(10);       // Try to connect for 10 seconds
+  wm.setEnableConfigPortal(false); // Disable auto-AP on failure
+  wm.setConfigPortalBlocking(false); // Ensure portal is non-blocking if we start it later
 
-  // 1. Initial Connection (Blocking, but updates portalRunning via callback)
-  // This allows TaskInterface to show "WiFi Setup Mode" on LCD while this task blocks.
+  Serial.println("Attempting WiFi Connection...");
   if(!wm.autoConnect("Greenhouse-Setup")) {
-      Serial.println("Failed to connect");
+      Serial.println("WiFi not connected. Running in Offline Mode.");
+      // Ensure we are in STA mode to allow background reconnection attempts
+      WiFi.mode(WIFI_STA); 
   } else {
-      Serial.println("Connected!");
+      Serial.println("WiFi Connected!");
       wifiConnected = true;
   }
   portalRunning = false; 
-  
-  // Switch to non-blocking for runtime button triggers
-  wm.setConfigPortalBlocking(false);
 
   // Initialize Blynk
   Blynk.config(BLYNK_AUTH_TOKEN);
@@ -715,6 +721,8 @@ void TaskConnectivity(void *pvParameters) {
 
       if (reconfigureWiFi) {
           Serial.println("Starting Config Portal (Non-Blocking)...");
+          wm.setEnableConfigPortal(true); // Re-enable portal for manual start
+          wm.setConfigPortalTimeout(120); // 2 minute timeout for manual setup
           wm.startConfigPortal("Greenhouse-Setup");
           reconfigureWiFi = false;
       }
@@ -795,6 +803,18 @@ void TaskConnectivity(void *pvParameters) {
           if (!portalRunning) {
              wifiConnected = false;
              awsConnected = false;
+
+             // --- SELF-HEALING: Auto-Reconnect Strategy ---
+             // If the router was off during boot (Power Cut), the ESP32 enters Offline Mode.
+             // We need to periodically check if the router is back online.
+             static unsigned long lastWifiRetry = 0;
+             if (millis() - lastWifiRetry > 30000) { // Check every 30 seconds
+                 lastWifiRetry = millis();
+                 Serial.println("Offline: Attempting background reconnection...");
+                 
+                 // This forces the ESP32 to try connecting with saved credentials
+                 WiFi.reconnect(); 
+             }
           }
       }
 
