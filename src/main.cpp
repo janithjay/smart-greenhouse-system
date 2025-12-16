@@ -116,10 +116,16 @@ void TaskInterface(void *pvParameters);
 
 // --- AWS CALLBACK ---
 void messageHandler(char* topic, byte* payload, unsigned int length) {
-  Serial.print("AWS CMD: "); Serial.println(topic);
+  // 1. Debug: Print the raw payload
+  char jsonStr[length + 1];
+  memcpy(jsonStr, payload, length);
+  jsonStr[length] = '\0';
   
-  StaticJsonDocument<256> doc;
-  DeserializationError error = deserializeJson(doc, payload, length);
+  Serial.print("AWS CMD Topic: "); Serial.println(topic);
+  Serial.print("AWS CMD Payload: "); Serial.println(jsonStr);
+  
+  StaticJsonDocument<512> doc; // Increased size just in case
+  DeserializationError error = deserializeJson(doc, jsonStr);
 
   if (error) {
     Serial.print("deserializeJson() failed: ");
@@ -127,47 +133,70 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  // Check for configuration updates
+  // 2. Configuration Updates
   bool configChanged = false;
   
-  if (doc.containsKey("temp_min")) {
-    TEMP_MIN_NIGHT = doc["temp_min"];
-    preferences.putFloat("temp_min", TEMP_MIN_NIGHT);
-    configChanged = true;
-  }
-  if (doc.containsKey("temp_max")) {
-    TEMP_MAX_DAY = doc["temp_max"];
-    preferences.putFloat("temp_max", TEMP_MAX_DAY);
-    configChanged = true;
-  }
-  if (doc.containsKey("hum_max")) {
-    HUM_MAX = doc["hum_max"];
-    preferences.putFloat("hum_max", HUM_MAX);
-    configChanged = true;
-  }
-  if (doc.containsKey("soil_dry")) {
-    SOIL_DRY = doc["soil_dry"];
-    preferences.putInt("soil_dry", SOIL_DRY);
-    configChanged = true;
-  }
-  if (doc.containsKey("soil_wet")) {
-    SOIL_WET = doc["soil_wet"];
-    preferences.putInt("soil_wet", SOIL_WET);
-    configChanged = true;
-  }
-  if (doc.containsKey("cal_air")) {
-    AIR_VAL = doc["cal_air"];
-    preferences.putInt("cal_air", AIR_VAL);
-    configChanged = true;
-  }
-  if (doc.containsKey("cal_water")) {
-    WATER_VAL = doc["cal_water"];
-    preferences.putInt("cal_water", WATER_VAL);
-    configChanged = true;
-  }
+  // Support both "temp_min" and "min_temp" keys
+  if (doc.containsKey("temp_min")) { TEMP_MIN_NIGHT = doc["temp_min"]; configChanged = true; preferences.putFloat("temp_min", TEMP_MIN_NIGHT); }
+  else if (doc.containsKey("min_temp")) { TEMP_MIN_NIGHT = doc["min_temp"]; configChanged = true; preferences.putFloat("temp_min", TEMP_MIN_NIGHT); }
+
+  if (doc.containsKey("temp_max")) { TEMP_MAX_DAY = doc["temp_max"]; configChanged = true; preferences.putFloat("temp_max", TEMP_MAX_DAY); }
+  else if (doc.containsKey("max_temp")) { TEMP_MAX_DAY = doc["max_temp"]; configChanged = true; preferences.putFloat("temp_max", TEMP_MAX_DAY); }
+
+  if (doc.containsKey("hum_max")) { HUM_MAX = doc["hum_max"]; configChanged = true; preferences.putFloat("hum_max", HUM_MAX); }
+  else if (doc.containsKey("max_hum")) { HUM_MAX = doc["max_hum"]; configChanged = true; preferences.putFloat("hum_max", HUM_MAX); }
+
+  if (doc.containsKey("soil_dry")) { SOIL_DRY = doc["soil_dry"]; configChanged = true; preferences.putInt("soil_dry", SOIL_DRY); }
+  if (doc.containsKey("soil_wet")) { SOIL_WET = doc["soil_wet"]; configChanged = true; preferences.putInt("soil_wet", SOIL_WET); }
+  
+  if (doc.containsKey("cal_air")) { AIR_VAL = doc["cal_air"]; configChanged = true; preferences.putInt("cal_air", AIR_VAL); }
+  if (doc.containsKey("cal_water")) { WATER_VAL = doc["cal_water"]; configChanged = true; preferences.putInt("cal_water", WATER_VAL); }
   
   if (configChanged) {
     Serial.println("Configuration Updated & Saved!");
+    // Update Blynk sliders to match new values
+    Blynk.virtualWrite(VPIN_SET_TEMP_MIN, TEMP_MIN_NIGHT);
+    Blynk.virtualWrite(VPIN_SET_TEMP_MAX, TEMP_MAX_DAY);
+    Blynk.virtualWrite(VPIN_SET_SOIL_DRY, SOIL_DRY);
+    Blynk.virtualWrite(VPIN_SET_SOIL_WET, SOIL_WET);
+  }
+
+  // 3. Control Commands (Manual Mode)
+  if (doc.containsKey("mode")) {
+      String m = doc["mode"];
+      if (m == "MANUAL" || m == "manual" || m == "1") {
+          manualMode = true;
+      } else if (m == "AUTO" || m == "auto" || m == "0") {
+          manualMode = false;
+          manualPump = false; manualFan = false; manualHeater = false;
+      }
+      Serial.print("Mode set to: "); Serial.println(manualMode ? "MANUAL" : "AUTO");
+      Blynk.virtualWrite(VPIN_MODE, manualMode ? 1 : 0);
+  }
+
+  if (doc.containsKey("pump")) {
+      if (manualMode) {
+          int val = doc["pump"]; // 0 or 1
+          manualPump = (val == 1);
+          Serial.print("Manual Pump: "); Serial.println(manualPump ? "ON" : "OFF");
+          Blynk.virtualWrite(VPIN_PUMP_BTN, manualPump ? 1 : 0);
+      }
+  }
+  if (doc.containsKey("fan")) {
+      if (manualMode) {
+          int val = doc["fan"];
+          manualFan = (val == 1);
+          Serial.print("Manual Fan: "); Serial.println(manualFan ? "ON" : "OFF");
+          Blynk.virtualWrite(VPIN_FAN_BTN, manualFan ? 1 : 0);
+      }
+  }
+  if (doc.containsKey("heater")) {
+      if (manualMode) {
+          int val = doc["heater"];
+          manualHeater = (val == 1);
+          Serial.print("Manual Heater: "); Serial.println(manualHeater ? "ON" : "OFF");
+          Blynk.virtualWrite(VPIN_HEATER_BTN, manualHeater ? 1 : 0);
+      }
   }
 
   // Check for OTA Update
@@ -393,7 +422,9 @@ void setup() {
 }
 
 void loop() {
-  vTaskDelete(NULL); // Everything runs in tasks
+  // Remove the default loopTask from Watchdog to prevent timeout
+  esp_task_wdt_delete(NULL);
+  vTaskDelete(NULL); // Now we can safely delete it
 }
 
 // ==========================================
@@ -402,7 +433,9 @@ void loop() {
 
 // --- TASK 1: SENSOR READING ---
 void TaskReadSensors(void *pvParameters) {
+  esp_task_wdt_add(NULL); // Add this task to WDT watch list
   for (;;) {
+    esp_task_wdt_reset(); // Feed the watchdog
     // AHT21 Reading
     sensors_event_t humidity, temp;
     aht.getEvent(&humidity, &temp); 
@@ -430,6 +463,7 @@ void TaskReadSensors(void *pvParameters) {
 
 // --- TASK 2: INTELLIGENT CONTROL ---
 void TaskControlSystem(void *pvParameters) {
+  esp_task_wdt_add(NULL); // Add to WDT
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
   
@@ -438,6 +472,7 @@ void TaskControlSystem(void *pvParameters) {
   const int TANK_FULL_DIST = 5;    // Distance when tank is full (cm)
   
   for (;;) {
+    esp_task_wdt_reset(); // Feed WDT
     // 1. Water Tank Level Check
     digitalWrite(PIN_TRIG, LOW); delayMicroseconds(2);
     digitalWrite(PIN_TRIG, HIGH); delayMicroseconds(10);
@@ -671,7 +706,10 @@ void TaskConnectivity(void *pvParameters) {
   client.setServer(AWS_IOT_ENDPOINT, 8883);
   client.setCallback(messageHandler);
 
+  esp_task_wdt_add(NULL); // Add to WDT
+
   for (;;) {
+      esp_task_wdt_reset(); // Feed WDT
       wm.process(); // Process WiFiManager (Non-blocking)
       portalRunning = wm.getConfigPortalActive();
 
