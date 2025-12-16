@@ -205,16 +205,23 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
       Serial.println("OTA Update Requested...");
       Serial.println(url);
       
-      // Disable WDT for update
-      esp_task_wdt_deinit();
+      // Disable WDT for this task during update (prevent timeout)
+      esp_task_wdt_delete(NULL);
       
-      t_httpUpdate_return ret = httpUpdate.update(net, url);
+      // Use a separate client for OTA to avoid messing up AWS certs
+      WiFiClientSecure otaClient;
+      otaClient.setInsecure(); // Allow any HTTPS server (GitHub, S3, etc.)
+      
+      // Configure to follow redirects (Important for GitHub)
+      httpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+
+      t_httpUpdate_return ret = httpUpdate.update(otaClient, url);
 
       switch (ret) {
         case HTTP_UPDATE_FAILED:
           Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
-          // Re-enable WDT
-          esp_task_wdt_init(30, true);
+          // Re-enable WDT for this task
+          esp_task_wdt_add(NULL);
           break;
         case HTTP_UPDATE_NO_UPDATES:
           Serial.println("HTTP_UPDATE_NO_UPDATES");
@@ -349,7 +356,7 @@ BLYNK_CONNECTED() {
 // ==========================================
 void setup() {
   Serial.begin(115200);
-  
+  Serial.println("Version 1.0");
   // 1. Initialize Hardware (LCD, I2C, Pins)
   Wire.begin(21, 22);
   lcd.init(); 
