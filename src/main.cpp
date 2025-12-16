@@ -10,6 +10,8 @@
 #include <ScioSense_ENS160.h>
 #include <WiFiManager.h>
 #include <Preferences.h>
+#include <LittleFS.h>
+#include <HTTPUpdate.h>
 #include "secrets.h"
 
 #define BLYNK_PRINT Serial
@@ -33,6 +35,14 @@
 #define VPIN_PUMP_BTN   V11  // Manual Pump control
 #define VPIN_FAN_BTN    V12  // Manual Fan control
 #define VPIN_HEATER_BTN V13  // Manual Heater control 
+
+// Configuration Pins (Write from app)
+#define VPIN_SET_TEMP_MIN V20
+#define VPIN_SET_TEMP_MAX V21
+#define VPIN_SET_SOIL_DRY V22
+#define VPIN_SET_SOIL_WET V23
+#define VPIN_CAL_AIR      V24 // Button to set current reading as Air (Dry)
+#define VPIN_CAL_WATER    V25 // Button to set current reading as Water (Wet)
 
 // ==========================================
 // 1. CONFIGURATION & PINOUT
@@ -87,6 +97,7 @@ volatile bool reconfigureWiFi = false;
 volatile bool portalRunning = false;
 volatile bool stopPortalRequest = false;
 volatile bool btnRequest = false;
+bool hasOfflineData = true; // Check on boot
 
 // --- MANUAL MODE VARIABLES ---
 volatile bool manualMode = false;      // false = Auto, true = Manual
@@ -158,6 +169,32 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
   if (configChanged) {
     Serial.println("Configuration Updated & Saved!");
   }
+
+  // Check for OTA Update
+  if (doc.containsKey("update_url")) {
+      const char* url = doc["update_url"];
+      Serial.println("OTA Update Requested...");
+      Serial.println(url);
+      
+      // Disable WDT for update
+      esp_task_wdt_deinit();
+      
+      t_httpUpdate_return ret = httpUpdate.update(net, url);
+
+      switch (ret) {
+        case HTTP_UPDATE_FAILED:
+          Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
+          // Re-enable WDT
+          esp_task_wdt_init(30, true);
+          break;
+        case HTTP_UPDATE_NO_UPDATES:
+          Serial.println("HTTP_UPDATE_NO_UPDATES");
+          break;
+        case HTTP_UPDATE_OK:
+          Serial.println("HTTP_UPDATE_OK");
+          break;
+      }
+  }
 }
 
 // --- INTERRUPT SERVICE ROUTINE (ISR) ---
@@ -225,10 +262,57 @@ BLYNK_WRITE(VPIN_HEATER_BTN) {
   }
 }
 
+// --- CONFIGURATION HANDLERS ---
+BLYNK_WRITE(VPIN_SET_TEMP_MIN) {
+  TEMP_MIN_NIGHT = param.asFloat();
+  preferences.putFloat("temp_min", TEMP_MIN_NIGHT);
+  Serial.print("Set Min Temp: "); Serial.println(TEMP_MIN_NIGHT);
+}
+
+BLYNK_WRITE(VPIN_SET_TEMP_MAX) {
+  TEMP_MAX_DAY = param.asFloat();
+  preferences.putFloat("temp_max", TEMP_MAX_DAY);
+  Serial.print("Set Max Temp: "); Serial.println(TEMP_MAX_DAY);
+}
+
+BLYNK_WRITE(VPIN_SET_SOIL_DRY) {
+  SOIL_DRY = param.asInt();
+  preferences.putInt("soil_dry", SOIL_DRY);
+  Serial.print("Set Soil Dry: "); Serial.println(SOIL_DRY);
+}
+
+BLYNK_WRITE(VPIN_SET_SOIL_WET) {
+  SOIL_WET = param.asInt();
+  preferences.putInt("soil_wet", SOIL_WET);
+  Serial.print("Set Soil Wet: "); Serial.println(SOIL_WET);
+}
+
+BLYNK_WRITE(VPIN_CAL_AIR) {
+  if (param.asInt() == 1) {
+      int raw = analogRead(PIN_SOIL);
+      AIR_VAL = raw;
+      preferences.putInt("cal_air", AIR_VAL);
+      Serial.print("Calibrated Air (Dry): "); Serial.println(AIR_VAL);
+  }
+}
+
+BLYNK_WRITE(VPIN_CAL_WATER) {
+  if (param.asInt() == 1) {
+      int raw = analogRead(PIN_SOIL);
+      WATER_VAL = raw;
+      preferences.putInt("cal_water", WATER_VAL);
+      Serial.print("Calibrated Water (Wet): "); Serial.println(WATER_VAL);
+  }
+}
+
 // Sync mode state when app connects
 BLYNK_CONNECTED() {
   Serial.println("Blynk Connected!");
   Blynk.syncVirtual(VPIN_MODE);
+  Blynk.syncVirtual(VPIN_SET_TEMP_MIN);
+  Blynk.syncVirtual(VPIN_SET_TEMP_MAX);
+  Blynk.syncVirtual(VPIN_SET_SOIL_DRY);
+  Blynk.syncVirtual(VPIN_SET_SOIL_WET);
 }
 
 // ==========================================
@@ -261,7 +345,30 @@ void setup() {
   WATER_VAL      = preferences.getInt("cal_water", 1670);
   Serial.println("Config Loaded from NVS");
 
-  // 3. Initialize Sensors
+  // 3. Initialize File System
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS Mount Failed");
+  } else {
+    Serial.println("LittleFS Mounted");
+    
+    // --- DEBUG: PRINT OFFLINE LOGS ---
+    if (LittleFS.exists("/offline_log.txt")) {
+        Serial.println("--- FOUND OFFLINE LOGS ---");
+        File f = LittleFS.open("/offline_log.txt", "r");
+        while (f.available()) Serial.write(f.read());
+        f.close();
+        Serial.println("\n--- END LOGS ---");
+    }
+    if (LittleFS.exists("/processing.txt")) {
+        Serial.println("--- FOUND PROCESSING LOGS ---");
+        File f = LittleFS.open("/processing.txt", "r");
+        while (f.available()) Serial.write(f.read());
+        f.close();
+        Serial.println("\n--- END LOGS ---");
+    }
+  }
+
+  // 4. Initialize Sensors
   bool sensorsOk = true;
   if (!aht.begin()) { Serial.println("AHT Error"); sensorsOk = false; }
   if (!ens160.begin()) { Serial.println("ENS Error"); sensorsOk = false; }
@@ -455,6 +562,79 @@ void TaskInterface(void *pvParameters) {
   }
 }
 
+// --- DATA LOGGING HELPER FUNCTIONS ---
+void logDataOffline(const char* jsonString) {
+  File file = LittleFS.open("/offline_log.txt", FILE_APPEND);
+  if (!file) {
+    Serial.println("Failed to open log file");
+    return;
+  }
+  file.println(jsonString);
+  file.close();
+  Serial.println("Data Logged Offline");
+  hasOfflineData = true; // Flag to process later
+}
+
+void processOfflineData() {
+  if (!hasOfflineData) return; // Skip if we know there's nothing
+
+  bool foundProcessing = false;
+  bool foundLog = false;
+
+  // Use directory listing to check for files to avoid "does not exist" error logs
+  File root = LittleFS.open("/");
+  if (!root) return;
+
+  File file = root.openNextFile();
+  while(file){
+      String fileName = file.name();
+      if(fileName.indexOf("processing.txt") >= 0) foundProcessing = true;
+      if(fileName.indexOf("offline_log.txt") >= 0) foundLog = true;
+      file = root.openNextFile();
+  }
+  root.close();
+
+  // If neither file exists, update flag and return
+  if (!foundProcessing && !foundLog) {
+      hasOfflineData = false;
+      return;
+  }
+
+  // 1. Check if we have a pending processing file from a previous failed attempt
+  if (foundProcessing) {
+      File file = LittleFS.open("/processing.txt", FILE_READ);
+      if (file) {
+          Serial.println("Retrying Offline Data Upload...");
+          bool allSent = true;
+          while (file.available()) {
+              String line = file.readStringUntil('\n');
+              line.trim();
+              if (line.length() > 0) {
+                  if (!client.connected() || !client.publish("greenhouse/data", line.c_str())) {
+                      allSent = false;
+                      break;
+                  }
+                  delay(50);
+              }
+          }
+          file.close();
+          if (allSent) {
+              LittleFS.remove("/processing.txt");
+              Serial.println("Old Offline Data Cleared");
+          } else {
+              return; // Stop if we failed again
+          }
+      }
+  }
+
+  // 2. Check for new offline data
+  if (foundLog) {
+      LittleFS.rename("/offline_log.txt", "/processing.txt");
+      // Recursive call to process the newly renamed file
+      processOfflineData();
+  }
+}
+
 // --- TASK 4: CLOUD CONNECTIVITY ---
 void configModeCallback (WiFiManager *myWiFiManager) {
   Serial.println("Entered config mode");
@@ -571,22 +751,6 @@ void TaskConnectivity(void *pvParameters) {
           } else {
               awsConnected = true;
               client.loop();
-              
-              // Non-blocking publish timer
-              static unsigned long lastPub = 0;
-              if (millis() - lastPub > 5000) {
-                  char jsonBuffer[400]; 
-                  snprintf(jsonBuffer, sizeof(jsonBuffer), 
-                    "{\"device_id\": \"GreenHouse_Unit\", \"timestamp\": %lu, \"temp\": %.1f, \"hum\": %.1f, \"soil\": %d, \"co2\": %d, \"tvoc\": %d, \"tank_level\": %d, \"pump\": %d, \"fan\": %d, \"heater\": %d, \"mode\": \"%s\"}", 
-                    (unsigned long)time(nullptr),
-                    currentTemp, currentHum, soilMoisture, eco2, tvoc, waterTankLevel,
-                    pumpStatus ? 1 : 0, fanStatus ? 1 : 0, heaterStatus ? 1 : 0,
-                    manualMode ? "MANUAL" : "AUTO");
-                  
-                  client.publish("greenhouse/data", jsonBuffer);
-                  Serial.println("Published Data");
-                  lastPub = millis();
-              }
           }
       } else {
           // WiFi Lost
@@ -595,6 +759,31 @@ void TaskConnectivity(void *pvParameters) {
              awsConnected = false;
           }
       }
+
+      // Unified Data Logging & Publishing (Runs regardless of WiFi)
+      static unsigned long lastDataGen = 0;
+      if (millis() - lastDataGen > 5000) {
+          char jsonBuffer[400]; 
+          snprintf(jsonBuffer, sizeof(jsonBuffer), 
+            "{\"device_id\": \"GreenHouse_Unit\", \"timestamp\": %lu, \"temp\": %.1f, \"hum\": %.1f, \"soil\": %d, \"co2\": %d, \"tvoc\": %d, \"tank_level\": %d, \"pump\": %d, \"fan\": %d, \"heater\": %d, \"mode\": \"%s\"}", 
+            (unsigned long)time(nullptr),
+            currentTemp, currentHum, soilMoisture, eco2, tvoc, waterTankLevel,
+            pumpStatus ? 1 : 0, fanStatus ? 1 : 0, heaterStatus ? 1 : 0,
+            manualMode ? "MANUAL" : "AUTO");
+
+          if (wifiConnected && awsConnected) {
+              client.publish("greenhouse/data", jsonBuffer);
+              Serial.println("Published Data");
+              
+              // Also check for offline data upload here
+              processOfflineData(); 
+          } else {
+              // If AWS is down (even if WiFi is up), log locally
+              logDataOffline(jsonBuffer);
+          }
+          lastDataGen = millis();
+      }
+
       vTaskDelay(50 / portTICK_PERIOD_MS); // Yield to other tasks
   }
 }
