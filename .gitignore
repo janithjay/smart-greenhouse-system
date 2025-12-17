@@ -4,3 +4,5 @@
 .vscode/launch.json
 .vscode/ipch
 src/secrets.h
+/webapp/node_modules
+/webapp/amplify
