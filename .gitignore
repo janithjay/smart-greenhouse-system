@@ -6,3 +6,19 @@
 src/secrets.h
 /webapp/node_modules
 /webapp/amplify
+
+# Webapp (Vite/React)
+webapp/dist
+webapp/dist-ssr
+webapp/*.local
+webapp/.env
+webapp/.env.*
+webapp/coverage
+webapp/npm-debug.log*
+webapp/yarn-debug.log*
+webapp/yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
