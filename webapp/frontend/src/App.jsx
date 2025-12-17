@@ -1,19 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Thermometer, Droplets, Wind, Activity, Waves } from 'lucide-react';
+import io from 'socket.io-client';
 import SensorCard from './components/SensorCard';
 import ControlPanel from './components/ControlPanel';
 import ConfigPanel from './components/ConfigPanel';
 import HistoryGraph from './components/HistoryGraph';
 import './App.css';
 
+// Connect to Backend
+const socket = io('http://localhost:3001');
+
 function App() {
   // --- State ---
   const [sensorData, setSensorData] = useState({
-    temp: 24.5,
-    hum: 65,
-    soil: 45,
-    co2: 420,
-    tank_level: 85,
+    temp: 0,
+    hum: 0,
+    soil: 0,
+    co2: 0,
+    tank_level: 0,
     timestamp: Date.now()
   });
 
@@ -24,6 +28,7 @@ function App() {
   });
 
   const [mode, setMode] = useState('AUTO'); // 'AUTO' or 'MANUAL'
+  const [connected, setConnected] = useState(false);
 
   const [config, setConfig] = useState({
     temp_min: 20.0,
@@ -34,59 +39,82 @@ function App() {
 
   const [history, setHistory] = useState([]);
 
-  // --- Simulation Effect (Mock Data) ---
+  // --- Socket.io Effect ---
   useEffect(() => {
-    const interval = setInterval(() => {
-      setSensorData(prev => {
-        const newData = {
-          ...prev,
-          temp: parseFloat((prev.temp + (Math.random() - 0.5)).toFixed(1)),
-          hum: Math.min(100, Math.max(0, Math.floor(prev.hum + (Math.random() * 4 - 2)))),
-          soil: Math.min(100, Math.max(0, Math.floor(prev.soil + (Math.random() * 2 - 1)))),
-          co2: Math.max(400, prev.co2 + Math.floor(Math.random() * 10 - 5)),
-          timestamp: Date.now()
-        };
+    socket.on('connect', () => {
+      console.log('Connected to Backend');
+      setConnected(true);
+    });
 
-        // Update History
-        setHistory(prevHist => {
-          const newHist = [...prevHist, {
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            temp: newData.temp,
-            hum: newData.hum,
-            soil: newData.soil
-          }];
-          if (newHist.length > 20) newHist.shift(); // Keep last 20 points
-          return newHist;
-        });
+    socket.on('disconnect', () => {
+      console.log('Disconnected from Backend');
+      setConnected(false);
+    });
 
-        return newData;
+    socket.on('sensor-data', (data) => {
+      console.log('Data:', data);
+      setSensorData(data);
+      
+      // Update Device States from real data
+      setDevices({
+        pump: data.pump === 1,
+        fan: data.fan === 1,
+        heater: data.heater === 1
       });
-    }, 2000);
 
-    return () => clearInterval(interval);
+      if (data.mode) {
+        setMode(data.mode);
+      }
+
+      // Update History
+      setHistory(prevHist => {
+        const newHist = [...prevHist, {
+          time: new Date(data.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          temp: data.temp,
+          hum: data.hum,
+          soil: data.soil
+        }];
+        if (newHist.length > 20) newHist.shift(); 
+        return newHist;
+      });
+    });
+
+    return () => {
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('sensor-data');
+    };
   }, []);
 
   // --- Handlers ---
   const handleDeviceToggle = (device) => {
     if (mode === 'AUTO') return;
-    setDevices(prev => ({
-      ...prev,
-      [device]: !prev[device]
-    }));
+    
+    const newState = !devices[device];
+    // Optimistic Update
+    setDevices(prev => ({ ...prev, [device]: newState }));
+
+    // Send Command to Backend
+    socket.emit('control-command', { [device]: newState ? 1 : 0 });
+  };
+
+  const handleModeToggle = (newMode) => {
+      setMode(newMode);
+      socket.emit('control-command', { mode: newMode });
   };
 
   const handleConfigSave = (newConfig) => {
     setConfig(newConfig);
-    alert("Configuration Saved (Simulated)");
-    console.log("New Config:", newConfig);
+    socket.emit('config-update', newConfig);
+    alert("Configuration Sent to Device");
   };
 
   return (
     <div className="app-container">
       <header className="app-header">
         <h1>Smart Greenhouse</h1>
-        <div className="connection-status online">
-          <div className="dot"></div> Online
+        <div className={`connection-status ${connected ? 'online' : 'offline'}`}>
+          <div className="dot"></div> {connected ? 'Online' : 'Offline'}
         </div>
       </header>
 
@@ -134,7 +162,7 @@ function App() {
         <section className="controls-section">
           <ControlPanel 
             mode={mode} 
-            setMode={setMode} 
+            setMode={handleModeToggle} 
             devices={devices} 
             toggleDevice={handleDeviceToggle} 
           />

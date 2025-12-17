@@ -4,15 +4,16 @@
 .vscode/launch.json
 .vscode/ipch
 src/secrets.h
-/webapp/node_modules
-/webapp/amplify
+/webapp/frontend/node_modules
+/webapp/backend/node_modules
+/webapp/backend/certs/*
+!/webapp/backend/certs/.gitkeep
 
 # Webapp (Vite/React)
-webapp/dist
-webapp/dist-ssr
-webapp/*.local
-webapp/.env
-webapp/.env.*
+webapp/frontend/dist
+webapp/frontend/.env
+webapp/frontend/.env.*
+webapp/backend/.env
 webapp/coverage
 webapp/npm-debug.log*
 webapp/yarn-debug.log*
