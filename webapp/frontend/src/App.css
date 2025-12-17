@@ -31,20 +31,50 @@ body {
   padding-bottom: 20px;
 }
 
+.status-group {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.last-updated {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-left: 10px;
+    border-left: 1px solid #444;
+    padding-left: 15px;
+}
+
 .connection-status {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.connection-status.online {
   color: var(--success-color);
 }
 
-.connection-status .dot {
+.connection-status.online .dot {
   width: 8px;
   height: 8px;
   background-color: var(--success-color);
   border-radius: 50%;
   box-shadow: 0 0 8px var(--success-color);
+}
+
+.connection-status.offline {
+  color: var(--danger-color);
+}
+
+.connection-status.offline .dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--danger-color);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--danger-color);
 }
 
 /* Dashboard Grid */

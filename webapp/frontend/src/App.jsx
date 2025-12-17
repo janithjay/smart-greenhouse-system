@@ -29,6 +29,7 @@ function App() {
 
   const [mode, setMode] = useState('AUTO'); // 'AUTO' or 'MANUAL'
   const [connected, setConnected] = useState(false);
+  const [deviceOnline, setDeviceOnline] = useState(false);
 
   const [config, setConfig] = useState({
     temp_min: 20.0,
@@ -49,6 +50,12 @@ function App() {
     socket.on('disconnect', () => {
       console.log('Disconnected from Backend');
       setConnected(false);
+      setDeviceOnline(false);
+    });
+
+    socket.on('device-status', (status) => {
+      console.log('Device Status:', status);
+      setDeviceOnline(status.online);
     });
 
     socket.on('sensor-data', (data) => {
@@ -82,6 +89,7 @@ function App() {
     return () => {
       socket.off('connect');
       socket.off('disconnect');
+      socket.off('device-status');
       socket.off('sensor-data');
     };
   }, []);
@@ -113,8 +121,16 @@ function App() {
     <div className="app-container">
       <header className="app-header">
         <h1>Smart Greenhouse</h1>
-        <div className={`connection-status ${connected ? 'online' : 'offline'}`}>
-          <div className="dot"></div> {connected ? 'Online' : 'Offline'}
+        <div className="status-group">
+            <div className={`connection-status ${connected ? 'online' : 'offline'}`}>
+                <div className="dot"></div> Server: {connected ? 'Connected' : 'Disconnected'}
+            </div>
+            <div className={`connection-status ${deviceOnline ? 'online' : 'offline'}`}>
+                <div className="dot"></div> Device: {deviceOnline ? 'Online' : 'Offline'}
+            </div>
+            <div className="last-updated">
+                Last Data: {sensorData.timestamp ? new Date(sensorData.timestamp * 1000).toLocaleTimeString() : 'Never'}
+            </div>
         </div>
       </header>
 

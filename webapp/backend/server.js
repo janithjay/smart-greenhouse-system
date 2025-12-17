@@ -32,6 +32,14 @@ const certsExist = fs.existsSync(path.join(__dirname, 'certs', 'private.pem.key'
                    fs.existsSync(path.join(__dirname, 'certs', 'certificate.pem.crt')) &&
                    fs.existsSync(path.join(__dirname, 'certs', 'AmazonRootCA1.pem'));
 
+// --- State ---
+let lastSensorData = {
+    temp: 0, hum: 0, soil: 0, co2: 0, tank_level: 0, 
+    pump: 0, fan: 0, heater: 0, mode: 'AUTO', timestamp: Date.now()
+};
+let deviceOnline = false;
+let lastHeartbeat = 0;
+
 let device;
 
 if (certsExist && AWS_IOT_ENDPOINT) {
@@ -46,16 +54,31 @@ if (certsExist && AWS_IOT_ENDPOINT) {
     // --- AWS IoT Events ---
     device.on('connect', () => {
         console.log('✅ Connected to AWS IoT Core');
-        device.subscribe('greenhouse/data');
+        device.subscribe('greenhouse/data', (err) => {
+             if (err) {
+                 console.error('❌ Subscribe Error:', err);
+             } else {
+                 console.log('✅ Subscribed to greenhouse/data');
+             }
+        });
     });
 
     device.on('message', (topic, payload) => {
         const message = payload.toString();
-        // console.log('Message received:', topic, message);
+        console.log('Message received:', topic, message);
 
         if (topic === 'greenhouse/data') {
             try {
                 const data = JSON.parse(message);
+                
+                // Update heartbeat
+                lastHeartbeat = Date.now();
+                if (!deviceOnline) {
+                    deviceOnline = true;
+                    io.emit('device-status', { online: true });
+                    console.log('✅ Device marked ONLINE');
+                }
+
                 lastSensorData = data;
                 // Broadcast to all connected web clients
                 io.emit('sensor-data', data);
@@ -72,18 +95,24 @@ if (certsExist && AWS_IOT_ENDPOINT) {
     console.log('⚠️ AWS IoT Certificates or Endpoint missing. Running in Simulation Mode.');
 }
 
-// --- State ---
-let lastSensorData = {
-    temp: 0, hum: 0, soil: 0, co2: 0, tank_level: 0, 
-    pump: 0, fan: 0, heater: 0, mode: 'AUTO', timestamp: Date.now()
-};
+// --- Heartbeat Monitor ---
+setInterval(() => {
+    const now = Date.now();
+    // If no data for 15 seconds, consider device offline
+    if (deviceOnline && (now - lastHeartbeat > 15000)) {
+        deviceOnline = false;
+        io.emit('device-status', { online: false });
+        console.log('⚠️ Device marked OFFLINE (Timeout)');
+    }
+}, 5000);
 
 // --- Socket.io Events (Frontend Communication) ---
 io.on('connection', (socket) => {
   console.log('👤 Web Client Connected:', socket.id);
 
-  // Send immediate initial state if available
+  // Send immediate initial state
   socket.emit('sensor-data', lastSensorData);
+  socket.emit('device-status', { online: deviceOnline });
 
   // Handle Control Commands from Frontend
   socket.on('control-command', (command) => {
