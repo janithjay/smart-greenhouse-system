@@ -67,6 +67,10 @@ function App() {
       setDeviceOnline(status.online);
     });
 
+    socket.on('config-error', (err) => {
+      alert(err.message);
+    });
+
     socket.on('sensor-data', (data) => {
       console.log('Data:', data);
       setSensorData(data);
@@ -107,6 +111,7 @@ function App() {
       socket.off('connect');
       socket.off('disconnect');
       socket.off('device-status');
+      socket.off('config-error');
       socket.off('sensor-data');
     };
   }, []);

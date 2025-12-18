@@ -129,6 +129,22 @@ io.on('connection', (socket) => {
   // Handle Config Updates
   socket.on('config-update', (config) => {
     console.log('Received Config Update:', config);
+    
+    // --- Input Validation ---
+    const isValid = (
+        (config.temp_min === undefined || (config.temp_min >= 0 && config.temp_min <= 100)) &&
+        (config.temp_max === undefined || (config.temp_max >= 0 && config.temp_max <= 100)) &&
+        (config.hum_max === undefined || (config.hum_max >= 0 && config.hum_max <= 100)) &&
+        (config.soil_dry === undefined || (config.soil_dry >= 0 && config.soil_dry <= 100)) &&
+        (config.soil_wet === undefined || (config.soil_wet >= 0 && config.soil_wet <= 100))
+    );
+
+    if (!isValid) {
+        console.error('❌ Invalid Configuration Values Received:', config);
+        socket.emit('config-error', { message: 'Invalid values! Values must be 0 - 100' });
+        return; // Do not send to device
+    }
+
     if (device) {
         device.publish('greenhouse/commands', JSON.stringify(config));
     }

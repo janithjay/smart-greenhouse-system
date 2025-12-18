@@ -137,17 +137,49 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
   bool configChanged = false;
   
   // Support both "temp_min" and "min_temp" keys
-  if (doc.containsKey("temp_min")) { TEMP_MIN_NIGHT = doc["temp_min"]; configChanged = true; preferences.putFloat("temp_min", TEMP_MIN_NIGHT); }
-  else if (doc.containsKey("min_temp")) { TEMP_MIN_NIGHT = doc["min_temp"]; configChanged = true; preferences.putFloat("temp_min", TEMP_MIN_NIGHT); }
+  if (doc.containsKey("temp_min") || doc.containsKey("min_temp")) { 
+      float val = doc.containsKey("temp_min") ? doc["temp_min"] : doc["min_temp"];
+      if (val >= 0 && val <= 100) {
+          TEMP_MIN_NIGHT = val; 
+          configChanged = true; 
+          preferences.putFloat("temp_min", TEMP_MIN_NIGHT); 
+      }
+  }
 
-  if (doc.containsKey("temp_max")) { TEMP_MAX_DAY = doc["temp_max"]; configChanged = true; preferences.putFloat("temp_max", TEMP_MAX_DAY); }
-  else if (doc.containsKey("max_temp")) { TEMP_MAX_DAY = doc["max_temp"]; configChanged = true; preferences.putFloat("temp_max", TEMP_MAX_DAY); }
+  if (doc.containsKey("temp_max") || doc.containsKey("max_temp")) { 
+      float val = doc.containsKey("temp_max") ? doc["temp_max"] : doc["max_temp"];
+      if (val >= 0 && val <= 100) {
+          TEMP_MAX_DAY = val; 
+          configChanged = true; 
+          preferences.putFloat("temp_max", TEMP_MAX_DAY); 
+      }
+  }
 
-  if (doc.containsKey("hum_max")) { HUM_MAX = doc["hum_max"]; configChanged = true; preferences.putFloat("hum_max", HUM_MAX); }
-  else if (doc.containsKey("max_hum")) { HUM_MAX = doc["max_hum"]; configChanged = true; preferences.putFloat("hum_max", HUM_MAX); }
+  if (doc.containsKey("hum_max") || doc.containsKey("max_hum")) { 
+      float val = doc.containsKey("hum_max") ? doc["hum_max"] : doc["max_hum"];
+      if (val >= 0 && val <= 100) {
+          HUM_MAX = val; 
+          configChanged = true; 
+          preferences.putFloat("hum_max", HUM_MAX); 
+      }
+  }
 
-  if (doc.containsKey("soil_dry")) { SOIL_DRY = doc["soil_dry"]; configChanged = true; preferences.putInt("soil_dry", SOIL_DRY); }
-  if (doc.containsKey("soil_wet")) { SOIL_WET = doc["soil_wet"]; configChanged = true; preferences.putInt("soil_wet", SOIL_WET); }
+  if (doc.containsKey("soil_dry")) { 
+      int val = doc["soil_dry"];
+      if (val >= 0 && val <= 100) {
+          SOIL_DRY = val; 
+          configChanged = true; 
+          preferences.putInt("soil_dry", SOIL_DRY); 
+      }
+  }
+  if (doc.containsKey("soil_wet")) { 
+      int val = doc["soil_wet"];
+      if (val >= 0 && val <= 100) {
+          SOIL_WET = val; 
+          configChanged = true; 
+          preferences.putInt("soil_wet", SOIL_WET); 
+      }
+  }
   
   if (doc.containsKey("cal_air")) { AIR_VAL = doc["cal_air"]; configChanged = true; preferences.putInt("cal_air", AIR_VAL); }
   if (doc.containsKey("cal_water")) { WATER_VAL = doc["cal_water"]; configChanged = true; preferences.putInt("cal_water", WATER_VAL); }
