@@ -39,7 +39,9 @@ function App() {
     temp_max: 30.0,
     hum_max: 75.0,
     soil_dry: 40,
-    soil_wet: 70
+    soil_wet: 70,
+    tank_empty_dist: 25,
+    tank_full_dist: 5
   });
 
   const [history, setHistory] = useState([]);

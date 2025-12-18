@@ -136,12 +136,14 @@ io.on('connection', (socket) => {
         (config.temp_max === undefined || (config.temp_max >= 0 && config.temp_max <= 100)) &&
         (config.hum_max === undefined || (config.hum_max >= 0 && config.hum_max <= 100)) &&
         (config.soil_dry === undefined || (config.soil_dry >= 0 && config.soil_dry <= 100)) &&
-        (config.soil_wet === undefined || (config.soil_wet >= 0 && config.soil_wet <= 100))
+        (config.soil_wet === undefined || (config.soil_wet >= 0 && config.soil_wet <= 100)) &&
+        (config.tank_empty_dist === undefined || (config.tank_empty_dist > 0 && config.tank_empty_dist < 1000)) &&
+        (config.tank_full_dist === undefined || (config.tank_full_dist > 0 && config.tank_full_dist < 1000))
     );
 
     if (!isValid) {
         console.error('❌ Invalid Configuration Values Received:', config);
-        socket.emit('config-error', { message: 'Invalid values! Values must be 0 - 100' });
+        socket.emit('config-error', { message: 'Invalid values! Ranges (0 - 100), Tank distance (0 - 1000)'});
         return; // Do not send to device
     }
 

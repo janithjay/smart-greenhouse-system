@@ -56,6 +56,8 @@ float TEMP_MAX_DAY   = 30.0;  // Fan ON above this
 float HUM_MAX        = 75.0;  // Fan ON above this
 int   SOIL_DRY       = 40;    // Pump ON below this %
 int   SOIL_WET       = 70;    // Pump OFF above this %
+int   TANK_EMPTY_DIST = 25;   // Distance when tank is empty (cm)
+int   TANK_FULL_DIST  = 5;    // Distance when tank is full (cm)
 
 // --- SENSOR CALIBRATION (ESP32 is 12-bit: 0-4095) ---
 int AIR_VAL   = 4095;    
@@ -198,6 +200,28 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
               SOIL_WET = val; 
               configChanged = true; 
               preferences.putInt("soil_wet", SOIL_WET); 
+          }
+      }
+  }
+
+  if (doc.containsKey("tank_empty_dist")) { 
+      int val = doc["tank_empty_dist"];
+      if (val > 0 && val < 1000) {
+          if (TANK_EMPTY_DIST != val) {
+              TANK_EMPTY_DIST = val; 
+              configChanged = true; 
+              preferences.putInt("tank_empty", TANK_EMPTY_DIST); 
+          }
+      }
+  }
+
+  if (doc.containsKey("tank_full_dist")) { 
+      int val = doc["tank_full_dist"];
+      if (val > 0 && val < 1000) {
+          if (TANK_FULL_DIST != val) {
+              TANK_FULL_DIST = val; 
+              configChanged = true; 
+              preferences.putInt("tank_full", TANK_FULL_DIST); 
           }
       }
   }
@@ -446,6 +470,8 @@ void setup() {
   HUM_MAX        = preferences.getFloat("hum_max", 75.0);
   SOIL_DRY       = preferences.getInt("soil_dry", 40);
   SOIL_WET       = preferences.getInt("soil_wet", 70);
+  TANK_EMPTY_DIST = preferences.getInt("tank_empty", 25);
+  TANK_FULL_DIST  = preferences.getInt("tank_full", 5);
   AIR_VAL        = preferences.getInt("cal_air", 4095);
   WATER_VAL      = preferences.getInt("cal_water", 1670);
   Serial.println("Config Loaded from NVS");
@@ -544,8 +570,8 @@ void TaskControlSystem(void *pvParameters) {
   pinMode(PIN_ECHO, INPUT);
   
   // Tank dimensions (adjust these for tank)
-  const int TANK_EMPTY_DIST = 25;  // Distance when tank is empty (cm)
-  const int TANK_FULL_DIST = 5;    // Distance when tank is full (cm)
+  // const int TANK_EMPTY_DIST = 25;  // Distance when tank is empty (cm) - MOVED TO GLOBAL
+  // const int TANK_FULL_DIST = 5;    // Distance when tank is full (cm) - MOVED TO GLOBAL
   
   for (;;) {
     esp_task_wdt_reset(); // Feed WDT

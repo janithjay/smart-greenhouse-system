@@ -68,6 +68,24 @@ const ConfigPanel = ({ config, onSave }) => {
             onChange={handleChange} 
           />
         </div>
+        <div className="form-group">
+          <label>Tank Empty Distance (cm)</label>
+          <input 
+            type="number" 
+            name="tank_empty_dist" 
+            value={localConfig.tank_empty_dist} 
+            onChange={handleChange} 
+          />
+        </div>
+        <div className="form-group">
+          <label>Tank Full Distance (cm)</label>
+          <input 
+            type="number" 
+            name="tank_full_dist" 
+            value={localConfig.tank_full_dist} 
+            onChange={handleChange} 
+          />
+        </div>
         <button type="submit" className="save-btn">Save Settings</button>
       </form>
     </div>
