@@ -15,6 +15,9 @@ const socket = io(`http://${window.location.hostname}:${BACKEND_PORT}`);
 
 function App() {
   // --- State ---
+  const [deviceId, setDeviceId] = useState(localStorage.getItem('greenhouse_device_id') || '');
+  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('greenhouse_device_id'));
+  
   const [sensorData, setSensorData] = useState({
     temp: 0,
     hum: 0,
@@ -56,9 +59,16 @@ function App() {
 
   // --- Socket.io Effect ---
   useEffect(() => {
+    if (isLoggedIn && deviceId) {
+        socket.emit('join-device', deviceId);
+    }
+
     socket.on('connect', () => {
       console.log('Connected to Backend');
       setConnected(true);
+      if (isLoggedIn && deviceId) {
+          socket.emit('join-device', deviceId);
+      }
     });
 
     socket.on('disconnect', () => {
@@ -151,11 +161,45 @@ function App() {
     alert("Configuration Sent to Device");
   };
 
+  const handleLogin = (e) => {
+      e.preventDefault();
+      const id = e.target.elements.deviceId.value.trim();
+      if (id) {
+          setDeviceId(id);
+          setIsLoggedIn(true);
+          localStorage.setItem('greenhouse_device_id', id);
+          socket.emit('join-device', id);
+      }
+  };
+
+  const handleLogout = () => {
+      setIsLoggedIn(false);
+      setDeviceId('');
+      localStorage.removeItem('greenhouse_device_id');
+      window.location.reload();
+  };
+
+  if (!isLoggedIn) {
+      return (
+          <div className="login-container">
+              <div className="login-box">
+                  <h1>Smart Greenhouse</h1>
+                  <p>Enter your Device ID to connect</p>
+                  <form onSubmit={handleLogin}>
+                      <input type="text" name="deviceId" placeholder="e.g. GH-A1B2C3" required />
+                      <button type="submit">Connect</button>
+                  </form>
+              </div>
+          </div>
+      );
+  }
+
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>Smart Greenhouse</h1>
+        <h1>Smart Greenhouse <span className="device-badge">{deviceId}</span></h1>
         <div className="status-group">
+            <button onClick={handleLogout} className="logout-btn">Logout</button>
             <div className={`connection-status ${connected ? 'online' : 'offline'}`}>
                 <div className="dot"></div> Server: {connected ? 'Connected' : 'Disconnected'}
             </div>

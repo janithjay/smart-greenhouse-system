@@ -54,34 +54,34 @@ if (certsExist && AWS_IOT_ENDPOINT) {
     // --- AWS IoT Events ---
     device.on('connect', () => {
         console.log('✅ Connected to AWS IoT Core');
-        device.subscribe('greenhouse/data', (err) => {
+        // Subscribe to ALL devices using wildcard '+'
+        device.subscribe('greenhouse/+/data', (err) => {
              if (err) {
                  console.error('❌ Subscribe Error:', err);
              } else {
-                 console.log('✅ Subscribed to greenhouse/data');
+                 console.log('✅ Subscribed to greenhouse/+/data');
              }
         });
     });
 
     device.on('message', (topic, payload) => {
         const message = payload.toString();
-        console.log('Message received:', topic, message);
+        // console.log('Message received:', topic, message);
 
-        if (topic === 'greenhouse/data') {
+        // Topic format: greenhouse/{device_id}/data
+        const topicParts = topic.split('/');
+        if (topicParts.length === 3 && topicParts[2] === 'data') {
+            const deviceId = topicParts[1];
             try {
                 const data = JSON.parse(message);
                 
-                // Update heartbeat
-                lastHeartbeat = Date.now();
-                if (!deviceOnline) {
-                    deviceOnline = true;
-                    io.emit('device-status', { online: true });
-                    console.log('✅ Device marked ONLINE');
-                }
-
-                lastSensorData = data;
-                // Broadcast to all connected web clients
-                io.emit('sensor-data', data);
+                // Broadcast ONLY to clients listening to this device
+                io.to(deviceId).emit('sensor-data', data);
+                io.to(deviceId).emit('device-status', { online: true });
+                
+                // Store last known data for this device (optional, for quick load)
+                // In a real app, use a DB (Redis/DynamoDB)
+                // deviceDataStore[deviceId] = data; 
             } catch (e) {
                 console.error('Error parsing JSON:', e);
             }
@@ -110,25 +110,29 @@ setInterval(() => {
 io.on('connection', (socket) => {
   console.log('👤 Web Client Connected:', socket.id);
 
-  // Send immediate initial state
-  socket.emit('sensor-data', lastSensorData);
-  socket.emit('device-status', { online: deviceOnline });
+  // Handle Device Selection (Login)
+  socket.on('join-device', (deviceId) => {
+      console.log(`Socket ${socket.id} joining device room: ${deviceId}`);
+      socket.join(deviceId); // Join a room named after the Device ID
+      socket.deviceId = deviceId; // Store ID on socket object for reference
+  });
 
   // Handle Control Commands from Frontend
   socket.on('control-command', (command) => {
-    console.log('Received Command:', command);
+    if (!socket.deviceId) return; // Ignore if not logged in
+    console.log(`Command for ${socket.deviceId}:`, command);
     
     if (device) {
-        // Publish to AWS IoT (Firmware subscribes to 'greenhouse/commands')
-        device.publish('greenhouse/commands', JSON.stringify(command));
-    } else {
-        console.log('Simulating Command (No AWS):', command);
+        // Publish to specific device topic
+        const topic = `greenhouse/${socket.deviceId}/commands`;
+        device.publish(topic, JSON.stringify(command));
     }
   });
 
   // Handle Config Updates
   socket.on('config-update', (config) => {
-    console.log('Received Config Update:', config);
+    if (!socket.deviceId) return;
+    console.log(`Config Update for ${socket.deviceId}:`, config);
     
     // --- Input Validation ---
     const isValid = (
@@ -148,7 +152,8 @@ io.on('connection', (socket) => {
     }
 
     if (device) {
-        device.publish('greenhouse/commands', JSON.stringify(config));
+        const topic = `greenhouse/${socket.deviceId}/commands`;
+        device.publish(topic, JSON.stringify(config));
     }
   });
 

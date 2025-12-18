@@ -60,6 +60,7 @@ volatile int tvoc = 0;
 volatile int soilMoisture = 0;
 
 // --- STATE VARIABLES ---
+char deviceId[20]; // Unique Device ID derived from MAC
 volatile bool pumpStatus = false;
 volatile bool fanStatus = false;   
 volatile bool heaterStatus = false; 
@@ -304,11 +305,19 @@ void IRAM_ATTR isrResetButton() {
 void setup() {
   Serial.begin(115200);
   Serial.println("Version 1.0");
+
+  // 0. Generate Unique Device ID
+  uint64_t chipid = ESP.getEfuseMac();
+  snprintf(deviceId, 20, "GH-%04X%08X", (uint16_t)(chipid >> 32), (uint32_t)chipid);
+  Serial.print("Device ID: "); Serial.println(deviceId);
+
   // 1. Initialize Hardware (LCD, I2C, Pins)
   Wire.begin(21, 22);
   lcd.init(); 
   lcd.backlight();
   lcd.setCursor(0, 0); lcd.print("Smart GreenHouse");
+  lcd.setCursor(0, 1); lcd.print(deviceId); // Show ID on boot
+  delay(2000); // Let user see the ID
   lcd.setCursor(0, 1); lcd.print("System Starting...");
 
   pinMode(PIN_PUMP, OUTPUT); digitalWrite(PIN_PUMP, LOW);
@@ -611,7 +620,9 @@ void processOfflineData() {
               String line = file.readStringUntil('\n');
               line.trim();
               if (line.length() > 0) {
-                  if (!client.connected() || !client.publish("greenhouse/data", line.c_str())) {
+                  char topic[50];
+                  snprintf(topic, sizeof(topic), "greenhouse/%s/data", deviceId);
+                  if (!client.connected() || !client.publish(topic, line.c_str())) {
                       allSent = false;
                       break;
                   }
@@ -713,9 +724,11 @@ void TaskConnectivity(void *pvParameters) {
               if (millis() - lastAwsAttempt > 5000) {
                   lastAwsAttempt = millis();
                   Serial.print("AWS Connecting...");
-                  if (client.connect("GreenHouse_Unit")) {
+                  if (client.connect(deviceId)) {
                       Serial.println("CONNECTED");
-                      client.subscribe("greenhouse/commands");
+                      char topic[50];
+                      snprintf(topic, sizeof(topic), "greenhouse/%s/commands", deviceId);
+                      client.subscribe(topic);
                       awsConnected = true;
                   } else {
                       Serial.print("Failed: "); Serial.println(client.state());
@@ -750,14 +763,16 @@ void TaskConnectivity(void *pvParameters) {
       if (millis() - lastDataGen > 5000) {
           char jsonBuffer[400]; 
           snprintf(jsonBuffer, sizeof(jsonBuffer), 
-            "{\"device_id\": \"GreenHouse_Unit\", \"timestamp\": %lu, \"temp\": %.1f, \"hum\": %.1f, \"soil\": %d, \"co2\": %d, \"tvoc\": %d, \"tank_level\": %d, \"pump\": %d, \"fan\": %d, \"heater\": %d, \"mode\": \"%s\"}", 
-            (unsigned long)time(nullptr),
+            "{\"device_id\": \"%s\", \"timestamp\": %lu, \"temp\": %.1f, \"hum\": %.1f, \"soil\": %d, \"co2\": %d, \"tvoc\": %d, \"tank_level\": %d, \"pump\": %d, \"fan\": %d, \"heater\": %d, \"mode\": \"%s\"}", 
+            deviceId, (unsigned long)time(nullptr),
             currentTemp, currentHum, soilMoisture, eco2, tvoc, waterTankLevel,
             pumpStatus ? 1 : 0, fanStatus ? 1 : 0, heaterStatus ? 1 : 0,
             manualMode ? "MANUAL" : "AUTO");
 
           if (wifiConnected && awsConnected) {
-              client.publish("greenhouse/data", jsonBuffer);
+              char topic[50];
+              snprintf(topic, sizeof(topic), "greenhouse/%s/data", deviceId);
+              client.publish(topic, jsonBuffer);
               Serial.println("Published Data");
               
               // Also check for offline data upload here

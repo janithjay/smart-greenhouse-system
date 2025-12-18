@@ -418,3 +418,65 @@ input.error {
   margin-top: 4px;
   display: block;
 }
+
+/* Login Screen */
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: var(--bg-color);
+}
+
+.login-box {
+  background-color: var(--card-bg);
+  padding: 40px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.login-box input {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin: 20px 0;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #333;
+  color: white;
+}
+
+.login-box button {
+  width: 100%;
+  padding: 10px;
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.device-badge {
+  font-size: 0.8rem;
+  background: #333;
+  padding: 4px 8px;
+  border-radius: 4px;
+  vertical-align: middle;
+  margin-left: 10px;
+  color: var(--text-secondary);
+}
+
+.logout-btn {
+  background: transparent;
+  border: 1px solid #444;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.logout-btn:hover {
+  background: #333;
+  color: white;
+}
