@@ -13,22 +13,43 @@ body {
   background-color: var(--bg-color);
   color: var(--text-primary);
   margin: 0;
+  padding: 0;
   font-family: 'Inter', sans-serif;
+  width: 100vw;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .app-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
+  width: 100vw;
+  margin: 0;
+  padding: 25px 32px 25px 25px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 480px) {
+  .app-container {
+    padding: 10px;
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+  }
 }
 
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
   border-bottom: 1px solid #333;
-  padding-bottom: 20px;
+  padding-bottom: 15px;
 }
 
 .status-group {
@@ -77,11 +98,34 @@ body {
   box-shadow: 0 0 8px var(--danger-color);
 }
 
+/* Responsive Header */
+@media (max-width: 600px) {
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+  
+  .status-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .last-updated {
+    margin-left: 0;
+    border-left: none;
+    padding-left: 0;
+    margin-top: 5px;
+  }
+}
+
 /* Dashboard Grid */
 .dashboard-grid {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 30px;
 }
 
 /* Sensors */
@@ -91,19 +135,37 @@ body {
   gap: 20px;
 }
 
+@media (min-width: 1024px) {
+  .sensors-section {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 25px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .sensors-section {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 30px;
+  }
+}
+
 .sensor-card {
   background-color: var(--card-bg);
-  padding: 20px;
+  padding: 25px;
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0,0,0,0.2);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  transition: transform 0.2s;
+  gap: 12px;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  min-height: 140px;
 }
 
 .sensor-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-5px);
+  box-shadow: 0 8px 15px rgba(0,0,0,0.3);
+  border-color: var(--accent-color);
 }
 
 .sensor-header {
@@ -137,8 +199,21 @@ body {
 /* Controls & Config Layout */
 .controls-section {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
+}
+
+@media (min-width: 1024px) {
+  .controls-section {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 25px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .controls-section {
+    gap: 30px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -153,6 +228,12 @@ body {
   padding: 25px;
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: box-shadow 0.3s ease;
+}
+
+.control-panel:hover, .config-panel:hover, .history-graph:hover {
+  box-shadow: 0 8px 15px rgba(0,0,0,0.3);
 }
 
 h3 {
@@ -236,7 +317,7 @@ input:checked + .slider:before {
 /* Device Buttons */
 .device-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   gap: 15px;
 }
 

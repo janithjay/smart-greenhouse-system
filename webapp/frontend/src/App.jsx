@@ -8,7 +8,10 @@ import HistoryGraph from './components/HistoryGraph';
 import './App.css';
 
 // Connect to Backend
-const socket = io('http://localhost:3001');
+// Dynamically determine the backend URL based on the current hostname
+// This allows access from localhost or local IP (e.g., 192.168.x.x)
+const BACKEND_PORT = 3001;
+const socket = io(`http://${window.location.hostname}:${BACKEND_PORT}`);
 
 function App() {
   // --- State ---
