@@ -14,36 +14,6 @@
 #include <HTTPUpdate.h>
 #include "secrets.h"
 
-#define BLYNK_PRINT Serial
-#include <BlynkSimpleEsp32.h>
-
-// ==========================================
-// BLYNK VIRTUAL PINS
-// ==========================================
-// Display Pins (Read-only on app)
-#define VPIN_TEMP       V0   // Temperature display
-#define VPIN_HUM        V1   // Humidity display
-#define VPIN_SOIL       V2   // Soil moisture display
-#define VPIN_CO2        V3   // CO2 display
-#define VPIN_PUMP_LED   V4   // Pump status LED
-#define VPIN_FAN_LED    V5   // Fan status LED
-#define VPIN_HEATER_LED V6   // Heater status LED
-#define VPIN_TANK_LEVEL V7   // Water tank level display
-
-// Control Pins (Write from app)
-#define VPIN_MODE       V10  // Auto/Manual switch (0=Auto, 1=Manual)
-#define VPIN_PUMP_BTN   V11  // Manual Pump control
-#define VPIN_FAN_BTN    V12  // Manual Fan control
-#define VPIN_HEATER_BTN V13  // Manual Heater control 
-
-// Configuration Pins (Write from app)
-#define VPIN_SET_TEMP_MIN V20
-#define VPIN_SET_TEMP_MAX V21
-#define VPIN_SET_SOIL_DRY V22
-#define VPIN_SET_SOIL_WET V23
-#define VPIN_CAL_AIR      V24 // Button to set current reading as Air (Dry)
-#define VPIN_CAL_WATER    V25 // Button to set current reading as Water (Wet)
-
 // ==========================================
 // 1. CONFIGURATION & PINOUT
 // ==========================================
@@ -245,11 +215,6 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
   
   if (configChanged) {
     Serial.println("Configuration Updated & Saved!");
-    // Update Blynk sliders to match new values
-    Blynk.virtualWrite(VPIN_SET_TEMP_MIN, TEMP_MIN_NIGHT);
-    Blynk.virtualWrite(VPIN_SET_TEMP_MAX, TEMP_MAX_DAY);
-    Blynk.virtualWrite(VPIN_SET_SOIL_DRY, SOIL_DRY);
-    Blynk.virtualWrite(VPIN_SET_SOIL_WET, SOIL_WET);
   }
 
   // 3. Control Commands (Manual Mode)
@@ -262,7 +227,6 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
           manualPump = false; manualFan = false; manualHeater = false;
       }
       Serial.print("Mode set to: "); Serial.println(manualMode ? "MANUAL" : "AUTO");
-      Blynk.virtualWrite(VPIN_MODE, manualMode ? 1 : 0);
   }
 
   if (doc.containsKey("pump")) {
@@ -270,7 +234,6 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
           int val = doc["pump"]; // 0 or 1
           manualPump = (val == 1);
           Serial.print("Manual Pump: "); Serial.println(manualPump ? "ON" : "OFF");
-          Blynk.virtualWrite(VPIN_PUMP_BTN, manualPump ? 1 : 0);
       }
   }
   if (doc.containsKey("fan")) {
@@ -278,7 +241,6 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
           int val = doc["fan"];
           manualFan = (val == 1);
           Serial.print("Manual Fan: "); Serial.println(manualFan ? "ON" : "OFF");
-          Blynk.virtualWrite(VPIN_FAN_BTN, manualFan ? 1 : 0);
       }
   }
   if (doc.containsKey("heater")) {
@@ -286,7 +248,6 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
           int val = doc["heater"];
           manualHeater = (val == 1);
           Serial.print("Manual Heater: "); Serial.println(manualHeater ? "ON" : "OFF");
-          Blynk.virtualWrite(VPIN_HEATER_BTN, manualHeater ? 1 : 0);
       }
   }
 
@@ -335,113 +296,6 @@ void IRAM_ATTR isrResetButton() {
         btnRequest = true;
     }
     last_interrupt_time = interrupt_time;
-}
-
-// ==========================================
-// BLYNK HANDLERS
-// ==========================================
-
-// Mode Switch Handler (V10)
-BLYNK_WRITE(VPIN_MODE) {
-  manualMode = param.asInt();
-  Serial.print("Mode: "); Serial.println(manualMode ? "MANUAL" : "AUTO");
-  
-  // When switching to Auto, turn off manual controls
-  if (!manualMode) {
-    manualPump = false;
-    manualFan = false;
-    manualHeater = false;
-    // Update button states on app
-    Blynk.virtualWrite(VPIN_PUMP_BTN, 0);
-    Blynk.virtualWrite(VPIN_FAN_BTN, 0);
-    Blynk.virtualWrite(VPIN_HEATER_BTN, 0);
-  }
-}
-
-// Manual Pump Control (V11)
-BLYNK_WRITE(VPIN_PUMP_BTN) {
-  if (manualMode) {
-    manualPump = param.asInt();
-    Serial.print("Manual Pump: "); Serial.println(manualPump ? "ON" : "OFF");
-  } else {
-    // Reset button if not in manual mode
-    Blynk.virtualWrite(VPIN_PUMP_BTN, 0);
-  }
-}
-
-// Manual Fan Control (V12)
-BLYNK_WRITE(VPIN_FAN_BTN) {
-  if (manualMode) {
-    manualFan = param.asInt();
-    Serial.print("Manual Fan: "); Serial.println(manualFan ? "ON" : "OFF");
-  } else {
-    // Reset button if not in manual mode
-    Blynk.virtualWrite(VPIN_FAN_BTN, 0);
-  }
-}
-
-// Manual Heater Control (V13)
-BLYNK_WRITE(VPIN_HEATER_BTN) {
-  if (manualMode) {
-    manualHeater = param.asInt();
-    Serial.print("Manual Heater: "); Serial.println(manualHeater ? "ON" : "OFF");
-  } else {
-    // Reset button if not in manual mode
-    Blynk.virtualWrite(VPIN_HEATER_BTN, 0);
-  }
-}
-
-// --- CONFIGURATION HANDLERS ---
-BLYNK_WRITE(VPIN_SET_TEMP_MIN) {
-  TEMP_MIN_NIGHT = param.asFloat();
-  preferences.putFloat("temp_min", TEMP_MIN_NIGHT);
-  Serial.print("Set Min Temp: "); Serial.println(TEMP_MIN_NIGHT);
-}
-
-BLYNK_WRITE(VPIN_SET_TEMP_MAX) {
-  TEMP_MAX_DAY = param.asFloat();
-  preferences.putFloat("temp_max", TEMP_MAX_DAY);
-  Serial.print("Set Max Temp: "); Serial.println(TEMP_MAX_DAY);
-}
-
-BLYNK_WRITE(VPIN_SET_SOIL_DRY) {
-  SOIL_DRY = param.asInt();
-  preferences.putInt("soil_dry", SOIL_DRY);
-  Serial.print("Set Soil Dry: "); Serial.println(SOIL_DRY);
-}
-
-BLYNK_WRITE(VPIN_SET_SOIL_WET) {
-  SOIL_WET = param.asInt();
-  preferences.putInt("soil_wet", SOIL_WET);
-  Serial.print("Set Soil Wet: "); Serial.println(SOIL_WET);
-}
-
-BLYNK_WRITE(VPIN_CAL_AIR) {
-  if (param.asInt() == 1) {
-      int raw = analogRead(PIN_SOIL);
-      AIR_VAL = raw;
-      preferences.putInt("cal_air", AIR_VAL);
-      Serial.print("Calibrated Air (Dry): "); Serial.println(AIR_VAL);
-  }
-}
-
-BLYNK_WRITE(VPIN_CAL_WATER) {
-  if (param.asInt() == 1) {
-      int raw = analogRead(PIN_SOIL);
-      WATER_VAL = raw;
-      preferences.putInt("cal_water", WATER_VAL);
-      Serial.print("Calibrated Water (Wet): "); Serial.println(WATER_VAL);
-  }
-}
-
-// Sync mode state when app connects
-BLYNK_CONNECTED() {
-  Serial.println("Blynk Connected!");
-  Blynk.syncVirtual(VPIN_MODE);
-  Blynk.syncVirtual(VPIN_SET_TEMP_MIN);
-  Blynk.syncVirtual(VPIN_SET_TEMP_MAX);
-  Blynk.syncVirtual(VPIN_SET_SOIL_DRY);
-  Blynk.syncVirtual(VPIN_SET_SOIL_WET);
 }
 
 // ==========================================
@@ -602,7 +456,7 @@ void TaskControlSystem(void *pvParameters) {
     // Check if Manual or Auto mode
     if (manualMode) {
       // ========== MANUAL MODE ==========
-      // Directly control based on manual switches from Blynk app
+      // Directly control based on manual switches from Web App / AWS
       digitalWrite(PIN_PUMP, manualPump ? HIGH : LOW);
       pumpStatus = manualPump;
       
@@ -812,10 +666,6 @@ void TaskConnectivity(void *pvParameters) {
   }
   portalRunning = false; 
 
-  // Initialize Blynk
-  Blynk.config(BLYNK_AUTH_TOKEN);
-  // Blynk.connect(); // Don't block here, let the loop handle it
-
   // Load AWS Certificates
   net.setCACert(AWS_CERT_CA);
   net.setCertificate(AWS_CERT_CRT);
@@ -849,41 +699,6 @@ void TaskConnectivity(void *pvParameters) {
       // Run Cloud tasks if WiFi is Connected (Even if Portal is running)
       if (WiFi.status() == WL_CONNECTED) {
           wifiConnected = true;
-          
-          // Ensure Blynk is connected (Non-blocking retry)
-          static unsigned long lastBlynkAttempt = 0;
-          if (!Blynk.connected()) {
-             // Only try to connect every 15 seconds to avoid blocking the loop
-             if (millis() - lastBlynkAttempt > 15000) {
-                 lastBlynkAttempt = millis();
-                 // Try to connect with a short timeout (2s)
-                 Blynk.connect(2000); 
-             }
-          }
-          
-          // Run Blynk (Only if connected to avoid internal blocking retries)
-          if (Blynk.connected()) {
-             Blynk.run();
-          }
-          
-          // Update Blynk with sensor data (every 2 seconds)
-          static unsigned long lastBlynkUpdate = 0;
-          if (millis() - lastBlynkUpdate > 2000) {
-            // Send sensor readings to Blynk app
-            if (Blynk.connected()) {
-                Blynk.virtualWrite(VPIN_TEMP, currentTemp);
-                Blynk.virtualWrite(VPIN_HUM, currentHum);
-                Blynk.virtualWrite(VPIN_SOIL, soilMoisture);
-                Blynk.virtualWrite(VPIN_CO2, eco2);
-                Blynk.virtualWrite(VPIN_TANK_LEVEL, waterTankLevel);
-                
-                // Send device status LEDs
-                Blynk.virtualWrite(VPIN_PUMP_LED, pumpStatus ? 255 : 0);
-                Blynk.virtualWrite(VPIN_FAN_LED, fanStatus ? 255 : 0);
-                Blynk.virtualWrite(VPIN_HEATER_LED, heaterStatus ? 255 : 0);
-            }
-            lastBlynkUpdate = millis();
-          }
           
           // NTP Time Sync (Required for AWS SSL)
           time_t now = time(nullptr);

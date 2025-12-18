@@ -406,3 +406,15 @@ input:checked + .slider:before {
 .graph-section {
   height: 400px;
 }
+
+/* Validation Errors */
+input.error {
+  border-color: var(--danger-color) !important;
+}
+
+.error-msg {
+  color: var(--danger-color);
+  font-size: 0.8rem;
+  margin-top: 4px;
+  display: block;
+}
