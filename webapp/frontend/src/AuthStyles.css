@@ -1,0 +1,54 @@
+
+/* --- Authentication Screen Styling --- */
+
+.auth-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  width: 100vw;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d3436 100%);
+  position: fixed; /* Ensure it covers the whole screen */
+  top: 0;
+  left: 0;
+}
+
+/* Customize Amplify Authenticator to match Dark Theme */
+[data-amplify-authenticator] {
+  --amplify-components-authenticator-router-box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --amplify-components-authenticator-router-border-width: 0;
+  --amplify-components-button-primary-background-color: var(--success-color);
+  --amplify-components-button-primary-hover-background-color: #43a047;
+  --amplify-components-field-label-color: #e0e0e0;
+  --amplify-components-heading-color: #ffffff;
+  --amplify-components-tabs-item-active-color: var(--success-color);
+  --amplify-components-tabs-item-active-border-color: var(--success-color);
+  --amplify-components-tabs-item-color: #a0a0a0;
+  --amplify-colors-background-primary: #242424;
+  --amplify-colors-background-secondary: #1a1a1a;
+  --amplify-colors-font-primary: #ffffff;
+  --amplify-colors-font-secondary: #a0a0a0;
+  --amplify-colors-border-primary: #444;
+  --amplify-colors-border-secondary: #333;
+}
+
+/* Specific overrides for inputs in dark mode */
+.amplify-input {
+  background-color: #1a1a1a !important;
+  color: white !important;
+  border-color: #444 !important;
+}
+
+.amplify-input:focus {
+  border-color: var(--success-color) !important;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2) !important;
+}
+
+/* Hide the wrapper when logged in (Dashboard is rendered inside) */
+.auth-wrapper:has(.app-container) {
+  display: block;
+  background: none;
+  position: static;
+  height: auto;
+  width: auto;
+}
