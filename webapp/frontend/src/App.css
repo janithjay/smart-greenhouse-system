@@ -571,10 +571,15 @@ input.error {
   margin: 0;
 }
 
-.delete-btn {
+.card-actions {
   position: absolute;
   top: 15px;
   right: 15px;
+  display: flex;
+  gap: 5px;
+}
+
+.icon-btn {
   background: transparent;
   border: none;
   color: var(--text-secondary);
@@ -582,6 +587,14 @@ input.error {
   padding: 5px;
   border-radius: 4px;
   transition: color 0.2s, background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-btn:hover {
+  color: var(--accent-color);
+  background-color: rgba(100, 108, 255, 0.1);
 }
 
 .delete-btn:hover {

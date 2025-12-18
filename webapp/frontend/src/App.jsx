@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Thermometer, Droplets, Wind, Activity, Waves, Plus, Trash2 } from 'lucide-react';
+import { Thermometer, Droplets, Wind, Activity, Waves, Plus, Trash2, Edit } from 'lucide-react';
 import io from 'socket.io-client';
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
@@ -9,10 +9,13 @@ import ControlPanel from './components/ControlPanel';
 import ConfigPanel from './components/ConfigPanel';
 import HistoryGraph from './components/HistoryGraph';
 import './App.css';
+import './AuthStyles.css';
 
 // Connect to Backend
 const BACKEND_PORT = 3001;
-const socket = io(`http://${window.location.hostname}:${BACKEND_PORT}`);
+const socket = io(`https://${window.location.hostname}:${BACKEND_PORT}`, {
+  rejectUnauthorized: false // Allow self-signed certs in dev
+});
 
 function Dashboard({ user, signOut }) {
   // --- State ---
@@ -44,7 +47,7 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      const res = await fetch(`http://${window.location.hostname}:${BACKEND_PORT}/api/devices`, {
+      const res = await fetch(`https://${window.location.hostname}:${BACKEND_PORT}/api/devices`, {
         headers: { Authorization: token }
       });
       const data = await res.json();
@@ -63,7 +66,7 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      await fetch(`http://${window.location.hostname}:${BACKEND_PORT}/api/devices`, {
+      await fetch(`https://${window.location.hostname}:${BACKEND_PORT}/api/devices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: token },
         body: JSON.stringify({ deviceId: id, name })
@@ -80,7 +83,7 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      await fetch(`http://${window.location.hostname}:${BACKEND_PORT}/api/devices/${id}`, {
+      await fetch(`https://${window.location.hostname}:${BACKEND_PORT}/api/devices/${id}`, {
         method: 'DELETE',
         headers: { Authorization: token }
       });
@@ -91,6 +94,24 @@ function Dashboard({ user, signOut }) {
       }
     } catch (err) {
       alert("Failed to remove device");
+    }
+  };
+
+  const updateDeviceName = async (id, currentName) => {
+    const newName = prompt("Enter new name for device:", currentName);
+    if (!newName || newName === currentName) return;
+
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens.idToken.toString();
+      await fetch(`https://${window.location.hostname}:${BACKEND_PORT}/api/devices/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: token },
+        body: JSON.stringify({ name: newName })
+      });
+      fetchDevices();
+    } catch (err) {
+      alert("Failed to update device name");
     }
   };
 
@@ -184,9 +205,14 @@ function Dashboard({ user, signOut }) {
               <div key={dev.deviceId} className="device-card" onClick={() => selectDevice(dev.deviceId)}>
                 <h3>{dev.name}</h3>
                 <p>ID: {dev.deviceId}</p>
-                <button className="delete-btn" onClick={(e) => { e.stopPropagation(); removeDevice(dev.deviceId); }}>
-                  <Trash2 size={16}/>
-                </button>
+                <div className="card-actions">
+                  <button className="icon-btn edit-btn" onClick={(e) => { e.stopPropagation(); updateDeviceName(dev.deviceId, dev.name); }}>
+                    <Edit size={16}/>
+                  </button>
+                  <button className="icon-btn delete-btn" onClick={(e) => { e.stopPropagation(); removeDevice(dev.deviceId); }}>
+                    <Trash2 size={16}/>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -239,11 +265,13 @@ function Dashboard({ user, signOut }) {
 
 function App() {
   return (
-    <Authenticator>
-      {({ signOut, user }) => (
-        <Dashboard user={user} signOut={signOut} />
-      )}
-    </Authenticator>
+    <div className="auth-wrapper">
+      <Authenticator>
+        {({ signOut, user }) => (
+          <Dashboard user={user} signOut={signOut} />
+        )}
+      </Authenticator>
+    </div>
   );
 }
 

@@ -15,8 +15,8 @@ Amplify.configure({
         oauth: {
           domain: import.meta.env.VITE_COGNITO_DOMAIN,
           scopes: ['email', 'profile', 'openid'],
-          redirectSignIn: ['http://localhost:5173/'],
-          redirectSignOut: ['http://localhost:5173/'],
+          redirectSignIn: [window.location.origin + '/'],
+          redirectSignOut: [window.location.origin + '/'],
           responseType: 'code',
           providers: ['Google']
         }

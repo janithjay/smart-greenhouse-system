@@ -1,5 +1,6 @@
 const express = require('express');
-const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const awsIot = require('aws-iot-device-sdk');
 const AWS = require('aws-sdk');
@@ -33,6 +34,9 @@ const verifier = CognitoJwtVerifier.create({
   userPoolId: process.env.COGNITO_USER_POOL_ID,
   tokenUse: "id",
   clientId: process.env.COGNITO_CLIENT_ID,
+  httpOptions: {
+    responseTimeout: 10000 // Wait 10 seconds instead of 3
+  }
 });
 
 // Warm up the verifier (fetch JWKS) at startup
@@ -102,7 +106,33 @@ app.post('/api/devices', verifyAuth, async (req, res) => {
   }
 });
 
-// 3. Remove Device
+// 3. Update Device Name
+app.put('/api/devices/:deviceId', verifyAuth, async (req, res) => {
+  const { deviceId } = req.params;
+  const { name } = req.body;
+
+  const params = {
+    TableName: TABLE_NAME,
+    Key: {
+      userId: req.user.id,
+      deviceId: deviceId
+    },
+    UpdateExpression: "set #n = :n",
+    ExpressionAttributeNames: { "#n": "name" },
+    ExpressionAttributeValues: { ":n": name },
+    ReturnValues: "UPDATED_NEW"
+  };
+
+  try {
+    await docClient.update(params).promise();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("DynamoDB Error:", err);
+    res.status(500).json({ error: "Failed to update device" });
+  }
+});
+
+// 4. Remove Device
 app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
   const params = {
     TableName: TABLE_NAME,
@@ -121,7 +151,13 @@ app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
   }
 });
 
-const server = http.createServer(app);
+// Load Self-Signed Certs for HTTPS
+const sslOptions = {
+  key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
+  cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem'))
+};
+
+const server = https.createServer(sslOptions, app);
 const io = new Server(server, {
   cors: {
     origin: "*", // Allow all origins for now (or specify frontend URL)
@@ -132,7 +168,7 @@ const io = new Server(server, {
 // --- AWS IoT Setup ---
 // We expect certificates to be in a 'certs' folder
 // Check if certs exist before trying to connect
-const fs = require('fs');
+// const fs = require('fs'); // Already imported
 const certsExist = fs.existsSync(path.join(__dirname, 'certs', 'private.pem.key')) &&
                    fs.existsSync(path.join(__dirname, 'certs', 'certificate.pem.crt')) &&
                    fs.existsSync(path.join(__dirname, 'certs', 'AmazonRootCA1.pem'));
@@ -268,6 +304,6 @@ io.on('connection', (socket) => {
 });
 
 // --- Start Server ---
-server.listen(PORT, () => {
-  console.log(`🚀 Backend running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Backend running on https://localhost:${PORT}`);
 });
