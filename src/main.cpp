@@ -484,8 +484,18 @@ void TaskControlSystem(void *pvParameters) {
     digitalWrite(PIN_TRIG, LOW); delayMicroseconds(2);
     digitalWrite(PIN_TRIG, HIGH); delayMicroseconds(10);
     digitalWrite(PIN_TRIG, LOW);
-    long duration = pulseIn(PIN_ECHO, HIGH);
-    int distanceCM = duration * 0.034 / 2;
+    
+    // Add timeout of 30ms (approx 5 meters max distance) to prevent blocking
+    long duration = pulseIn(PIN_ECHO, HIGH, 30000); 
+    
+    int distanceCM = 0;
+    if (duration == 0) {
+        // Timeout occurred - Sensor disconnected or out of range
+        // Assume tank is empty to be safe (prevent pump running dry)
+        distanceCM = TANK_EMPTY_DIST; 
+    } else {
+        distanceCM = duration * 0.034 / 2;
+    }
     
     // Calculate tank level percentage (inverted: less distance = more water)
     distanceCM = constrain(distanceCM, TANK_FULL_DIST, TANK_EMPTY_DIST);
