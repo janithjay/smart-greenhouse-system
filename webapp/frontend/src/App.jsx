@@ -34,6 +34,7 @@ function App() {
   const [config, setConfig] = useState({
     temp_min: 20.0,
     temp_max: 30.0,
+    hum_max: 75.0,
     soil_dry: 40,
     soil_wet: 70
   });

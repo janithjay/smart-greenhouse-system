@@ -41,6 +41,16 @@ const ConfigPanel = ({ config, onSave }) => {
           />
         </div>
         <div className="form-group">
+          <label>Max Humidity %</label>
+          <input 
+            type="number" 
+            name="hum_max" 
+            value={localConfig.hum_max} 
+            onChange={handleChange} 
+            step="0.1"
+          />
+        </div>
+        <div className="form-group">
           <label>Soil Dry Threshold %</label>
           <input 
             type="number" 
