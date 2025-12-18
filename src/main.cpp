@@ -117,19 +117,29 @@ void TaskInterface(void *pvParameters);
 // --- AWS CALLBACK ---
 void messageHandler(char* topic, byte* payload, unsigned int length) {
   // 1. Debug: Print the raw payload
-  char jsonStr[length + 1];
+  // FIX: Use Heap instead of Stack to prevent overflow with large payloads
+  if (length > 10240) { // Limit to 10KB
+      Serial.println("Payload too large!");
+      return;
+  }
+  char* jsonStr = (char*)malloc(length + 1);
+  if (!jsonStr) {
+      Serial.println("Malloc failed");
+      return;
+  }
   memcpy(jsonStr, payload, length);
   jsonStr[length] = '\0';
   
   Serial.print("AWS CMD Topic: "); Serial.println(topic);
   Serial.print("AWS CMD Payload: "); Serial.println(jsonStr);
   
-  StaticJsonDocument<512> doc; // Increased size just in case
-  DeserializationError error = deserializeJson(doc, jsonStr);
+  StaticJsonDocument<1024> doc; // Increased size
+  DeserializationError error = deserializeJson(doc, (const char*)jsonStr);
 
   if (error) {
     Serial.print("deserializeJson() failed: ");
     Serial.println(error.c_str());
+    free(jsonStr); // FIX: Free memory
     return;
   }
 
@@ -140,49 +150,74 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
   if (doc.containsKey("temp_min") || doc.containsKey("min_temp")) { 
       float val = doc.containsKey("temp_min") ? doc["temp_min"] : doc["min_temp"];
       if (val >= 0 && val <= 100) {
-          TEMP_MIN_NIGHT = val; 
-          configChanged = true; 
-          preferences.putFloat("temp_min", TEMP_MIN_NIGHT); 
+          // FIX: Flash Wear-Out Protection (Only write if changed)
+          if (abs(TEMP_MIN_NIGHT - val) > 0.1) {
+              TEMP_MIN_NIGHT = val; 
+              configChanged = true; 
+              preferences.putFloat("temp_min", TEMP_MIN_NIGHT); 
+          }
       }
   }
 
   if (doc.containsKey("temp_max") || doc.containsKey("max_temp")) { 
       float val = doc.containsKey("temp_max") ? doc["temp_max"] : doc["max_temp"];
       if (val >= 0 && val <= 100) {
-          TEMP_MAX_DAY = val; 
-          configChanged = true; 
-          preferences.putFloat("temp_max", TEMP_MAX_DAY); 
+          if (abs(TEMP_MAX_DAY - val) > 0.1) {
+              TEMP_MAX_DAY = val; 
+              configChanged = true; 
+              preferences.putFloat("temp_max", TEMP_MAX_DAY); 
+          }
       }
   }
 
   if (doc.containsKey("hum_max") || doc.containsKey("max_hum")) { 
       float val = doc.containsKey("hum_max") ? doc["hum_max"] : doc["max_hum"];
       if (val >= 0 && val <= 100) {
-          HUM_MAX = val; 
-          configChanged = true; 
-          preferences.putFloat("hum_max", HUM_MAX); 
+          if (abs(HUM_MAX - val) > 0.1) {
+              HUM_MAX = val; 
+              configChanged = true; 
+              preferences.putFloat("hum_max", HUM_MAX); 
+          }
       }
   }
 
   if (doc.containsKey("soil_dry")) { 
       int val = doc["soil_dry"];
       if (val >= 0 && val <= 100) {
-          SOIL_DRY = val; 
-          configChanged = true; 
-          preferences.putInt("soil_dry", SOIL_DRY); 
+          if (SOIL_DRY != val) {
+              SOIL_DRY = val; 
+              configChanged = true; 
+              preferences.putInt("soil_dry", SOIL_DRY); 
+          }
       }
   }
   if (doc.containsKey("soil_wet")) { 
       int val = doc["soil_wet"];
       if (val >= 0 && val <= 100) {
-          SOIL_WET = val; 
-          configChanged = true; 
-          preferences.putInt("soil_wet", SOIL_WET); 
+          if (SOIL_WET != val) {
+              SOIL_WET = val; 
+              configChanged = true; 
+              preferences.putInt("soil_wet", SOIL_WET); 
+          }
       }
   }
   
-  if (doc.containsKey("cal_air")) { AIR_VAL = doc["cal_air"]; configChanged = true; preferences.putInt("cal_air", AIR_VAL); }
-  if (doc.containsKey("cal_water")) { WATER_VAL = doc["cal_water"]; configChanged = true; preferences.putInt("cal_water", WATER_VAL); }
+  if (doc.containsKey("cal_air")) { 
+      int val = doc["cal_air"];
+      if (AIR_VAL != val) {
+          AIR_VAL = val; 
+          configChanged = true; 
+          preferences.putInt("cal_air", AIR_VAL); 
+      }
+  }
+  if (doc.containsKey("cal_water")) { 
+      int val = doc["cal_water"];
+      if (WATER_VAL != val) {
+          WATER_VAL = val; 
+          configChanged = true; 
+          preferences.putInt("cal_water", WATER_VAL); 
+      }
+  }
   
   if (configChanged) {
     Serial.println("Configuration Updated & Saved!");
@@ -263,6 +298,8 @@ void messageHandler(char* topic, byte* payload, unsigned int length) {
           break;
       }
   }
+  
+  free(jsonStr); // FIX: Free memory
 }
 
 // --- INTERRUPT SERVICE ROUTINE (ISR) ---
