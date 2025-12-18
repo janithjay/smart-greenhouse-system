@@ -480,3 +480,142 @@ input.error {
   background: #333;
   color: white;
 }
+
+/* --- Device Management Styles --- */
+
+.device-list-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.add-device-card {
+  background-color: var(--card-bg);
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 30px;
+  border: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.add-device-card h3 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.add-device-card form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.add-device-card input {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 15px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background-color: #1a1a1a;
+  color: white;
+}
+
+.add-device-card button {
+  padding: 10px 20px;
+  background-color: var(--success-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.add-device-card button:hover {
+  background-color: #43a047;
+}
+
+.device-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.device-card {
+  background-color: var(--card-bg);
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid #333;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s;
+  position: relative;
+}
+
+.device-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-color);
+}
+
+.device-card h3 {
+  margin: 0 0 10px 0;
+  color: var(--text-primary);
+}
+
+.device-card p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 4px;
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.delete-btn:hover {
+  color: var(--danger-color);
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+/* Overwrite previous logout-btn if needed, or just keep the new one */
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1rem;
+  margin-right: 15px;
+  padding: 5px 10px;
+  border-radius: 4px;
+}
+
+.back-btn:hover {
+  background-color: #333;
+  color: white;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.device-badge {
+  background-color: var(--accent-color);
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  vertical-align: middle;
+  margin-left: 10px;
+}

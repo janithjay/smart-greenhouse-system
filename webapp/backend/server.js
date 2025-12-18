@@ -2,19 +2,124 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const awsIot = require('aws-iot-device-sdk');
+const AWS = require('aws-sdk');
+const { CognitoJwtVerifier } = require("aws-jwt-verify");
 const cors = require('cors');
 const path = require('path');
+const dns = require('dns');
 require('dotenv').config();
+
+// Fix for Node.js 17+ IPv6 issues
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 // --- Configuration ---
 const PORT = process.env.PORT || 3001;
 const AWS_IOT_ENDPOINT = process.env.AWS_IOT_ENDPOINT;
 const DEVICE_NAME = 'GreenHouse_Hub'; // Name for this backend connection
 
+// --- AWS SDK Setup (DynamoDB) ---
+AWS.config.update({
+  region: process.env.AWS_REGION,
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+});
+const docClient = new AWS.DynamoDB.DocumentClient();
+const TABLE_NAME = "GreenhouseUserDevices";
+
+// --- Cognito Verifier ---
+const verifier = CognitoJwtVerifier.create({
+  userPoolId: process.env.COGNITO_USER_POOL_ID,
+  tokenUse: "id",
+  clientId: process.env.COGNITO_CLIENT_ID,
+});
+
+// Warm up the verifier (fetch JWKS) at startup
+verifier.hydrate()
+  .then(() => console.log("✅ Cognito JWKS loaded successfully"))
+  .catch(err => console.error("❌ Failed to load Cognito JWKS (Check Internet/VPN):", err.message));
+
 // --- Express & Socket.io Setup ---
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// --- Middleware: Verify Cognito Token ---
+const verifyAuth = async (req, res, next) => {
+  const token = req.headers.authorization;
+  if (!token) return res.status(401).json({ error: "No token provided" });
+  try {
+    const payload = await verifier.verify(token);
+    req.user = { id: payload.sub, email: payload.email };
+    next();
+  } catch (err) {
+    console.error("Token verification failed:", err);
+    return res.status(401).json({ error: "Invalid token" });
+  }
+};
+
+// --- API Endpoints ---
+
+// 1. Get User's Devices
+app.get('/api/devices', verifyAuth, async (req, res) => {
+  const params = {
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "userId = :uid",
+    ExpressionAttributeValues: { ":uid": req.user.id }
+  };
+
+  try {
+    const data = await docClient.query(params).promise();
+    res.json(data.Items);
+  } catch (err) {
+    console.error("DynamoDB Error:", err);
+    res.status(500).json({ error: "Failed to fetch devices" });
+  }
+});
+
+// 2. Add Device
+app.post('/api/devices', verifyAuth, async (req, res) => {
+  const { deviceId, name } = req.body;
+  if (!deviceId) return res.status(400).json({ error: "Device ID required" });
+
+  const params = {
+    TableName: TABLE_NAME,
+    Item: {
+      userId: req.user.id,
+      deviceId: deviceId,
+      name: name || deviceId,
+      createdAt: Date.now()
+    }
+  };
+
+  try {
+    await docClient.put(params).promise();
+    res.json({ success: true, device: params.Item });
+  } catch (err) {
+    console.error("DynamoDB Error:", err);
+    res.status(500).json({ error: "Failed to add device" });
+  }
+});
+
+// 3. Remove Device
+app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
+  const params = {
+    TableName: TABLE_NAME,
+    Key: {
+      userId: req.user.id,
+      deviceId: req.params.deviceId
+    }
+  };
+
+  try {
+    await docClient.delete(params).promise();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("DynamoDB Error:", err);
+    res.status(500).json({ error: "Failed to remove device" });
+  }
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {

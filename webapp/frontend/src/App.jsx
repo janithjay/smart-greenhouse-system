@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Thermometer, Droplets, Wind, Activity, Waves } from 'lucide-react';
+import { Thermometer, Droplets, Wind, Activity, Waves, Plus, Trash2 } from 'lucide-react';
 import io from 'socket.io-client';
+import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
+import '@aws-amplify/ui-react/styles.css';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import SensorCard from './components/SensorCard';
 import ControlPanel from './components/ControlPanel';
 import ConfigPanel from './components/ConfigPanel';
@@ -8,114 +11,123 @@ import HistoryGraph from './components/HistoryGraph';
 import './App.css';
 
 // Connect to Backend
-// Dynamically determine the backend URL based on the current hostname
-// This allows access from localhost or local IP (e.g., 192.168.x.x)
 const BACKEND_PORT = 3001;
 const socket = io(`http://${window.location.hostname}:${BACKEND_PORT}`);
 
-function App() {
+function Dashboard({ user, signOut }) {
   // --- State ---
-  const [deviceId, setDeviceId] = useState(localStorage.getItem('greenhouse_device_id') || '');
-  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('greenhouse_device_id'));
+  const [deviceId, setDeviceId] = useState('');
+  const [userDevices, setUserDevices] = useState([]);
+  const [view, setView] = useState('list'); // 'list' or 'dashboard'
   
   const [sensorData, setSensorData] = useState({
-    temp: 0,
-    hum: 0,
-    soil: 0,
-    co2: 0,
-    tank_level: 0,
-    timestamp: Date.now()
+    temp: 0, hum: 0, soil: 0, co2: 0, tank_level: 0, timestamp: Date.now()
   });
 
-  const [devices, setDevices] = useState({
-    pump: false,
-    fan: false,
-    heater: false
-  });
-
-  const [mode, setMode] = useState('AUTO'); // 'AUTO' or 'MANUAL'
+  const [devices, setDevices] = useState({ pump: false, fan: false, heater: false });
+  const [mode, setMode] = useState('AUTO');
   const [connected, setConnected] = useState(false);
   const [deviceOnline, setDeviceOnline] = useState(false);
-
   const [config, setConfig] = useState({
-    temp_min: 20.0,
-    temp_max: 30.0,
-    hum_max: 75.0,
-    soil_dry: 40,
-    soil_wet: 70,
-    tank_empty_dist: 25,
-    tank_full_dist: 5
+    temp_min: 20.0, temp_max: 30.0, hum_max: 75.0, soil_dry: 40, soil_wet: 70,
+    tank_empty_dist: 25, tank_full_dist: 5
   });
-
   const [history, setHistory] = useState([]);
-  
-  // Loading states for UI feedback
-  const [loading, setLoading] = useState({
-    pump: false,
-    fan: false,
-    heater: false,
-    mode: false
-  });
+  const [loading, setLoading] = useState({ pump: false, fan: false, heater: false, mode: false });
+
+  // --- Fetch Devices on Load ---
+  useEffect(() => {
+    fetchDevices();
+  }, []);
+
+  const fetchDevices = async () => {
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens.idToken.toString();
+      const res = await fetch(`http://${window.location.hostname}:${BACKEND_PORT}/api/devices`, {
+        headers: { Authorization: token }
+      });
+      const data = await res.json();
+      setUserDevices(data);
+    } catch (err) {
+      console.error("Failed to fetch devices", err);
+    }
+  };
+
+  const addDevice = async (e) => {
+    e.preventDefault();
+    const id = e.target.elements.newDeviceId.value.trim();
+    const name = e.target.elements.newDeviceName.value.trim();
+    if (!id) return;
+
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens.idToken.toString();
+      await fetch(`http://${window.location.hostname}:${BACKEND_PORT}/api/devices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: token },
+        body: JSON.stringify({ deviceId: id, name })
+      });
+      fetchDevices();
+      e.target.reset();
+    } catch (err) {
+      alert("Failed to add device");
+    }
+  };
+
+  const removeDevice = async (id) => {
+    if(!confirm("Are you sure?")) return;
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens.idToken.toString();
+      await fetch(`http://${window.location.hostname}:${BACKEND_PORT}/api/devices/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: token }
+      });
+      fetchDevices();
+      if (deviceId === id) {
+        setDeviceId('');
+        setView('list');
+      }
+    } catch (err) {
+      alert("Failed to remove device");
+    }
+  };
+
+  const selectDevice = (id) => {
+    setDeviceId(id);
+    setView('dashboard');
+    socket.emit('join-device', id);
+  };
 
   // --- Socket.io Effect ---
   useEffect(() => {
-    if (isLoggedIn && deviceId) {
+    if (deviceId) {
         socket.emit('join-device', deviceId);
     }
 
     socket.on('connect', () => {
-      console.log('Connected to Backend');
       setConnected(true);
-      if (isLoggedIn && deviceId) {
-          socket.emit('join-device', deviceId);
-      }
+      if (deviceId) socket.emit('join-device', deviceId);
     });
 
     socket.on('disconnect', () => {
-      console.log('Disconnected from Backend');
       setConnected(false);
       setDeviceOnline(false);
     });
 
-    socket.on('device-status', (status) => {
-      console.log('Device Status:', status);
-      setDeviceOnline(status.online);
-    });
-
-    socket.on('config-error', (err) => {
-      alert(err.message);
-    });
+    socket.on('device-status', (status) => setDeviceOnline(status.online));
+    socket.on('config-error', (err) => alert(err.message));
 
     socket.on('sensor-data', (data) => {
-      console.log('Data:', data);
       setSensorData(data);
-      
-      // Update Device States from real data
-      setDevices({
-        pump: data.pump === 1,
-        fan: data.fan === 1,
-        heater: data.heater === 1
-      });
-
-      if (data.mode) {
-        setMode(data.mode);
-      }
-      
-      // Clear loading states when we receive fresh data
-      setLoading({
-        pump: false,
-        fan: false,
-        heater: false,
-        mode: false
-      });
-
-      // Update History
-      setHistory(prevHist => {
-        const newHist = [...prevHist, {
+      setDevices({ pump: data.pump === 1, fan: data.fan === 1, heater: data.heater === 1 });
+      if (data.mode) setMode(data.mode);
+      setLoading({ pump: false, fan: false, heater: false, mode: false });
+      setHistory(prev => {
+        const newHist = [...prev, {
           time: new Date(data.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          temp: data.temp,
-          hum: data.hum,
-          soil: data.soil
+          temp: data.temp, hum: data.hum, soil: data.soil
         }];
         if (newHist.length > 20) newHist.shift(); 
         return newHist;
@@ -129,29 +141,17 @@ function App() {
       socket.off('config-error');
       socket.off('sensor-data');
     };
-  }, []);
+  }, [deviceId]);
 
   // --- Handlers ---
   const handleDeviceToggle = (device) => {
     if (mode === 'AUTO') return;
-    
-    const newState = !devices[device];
-    
-    // Set loading state
     setLoading(prev => ({ ...prev, [device]: true }));
-
-    // Send Command to Backend
-    // We do NOT update state here (Optimistic UI). 
-    // We wait for the backend to send back the new state via 'sensor-data'.
-    socket.emit('control-command', { [device]: newState ? 1 : 0 });
+    socket.emit('control-command', { [device]: !devices[device] ? 1 : 0 });
   };
 
   const handleModeToggle = (newMode) => {
-      // Set loading state
       setLoading(prev => ({ ...prev, mode: true }));
-
-      // Send Command to Backend
-      // Wait for confirmation via 'sensor-data' before updating UI
       socket.emit('control-command', { mode: newMode });
   };
 
@@ -161,53 +161,53 @@ function App() {
     alert("Configuration Sent to Device");
   };
 
-  const handleLogin = (e) => {
-      e.preventDefault();
-      const id = e.target.elements.deviceId.value.trim();
-      if (id) {
-          setDeviceId(id);
-          setIsLoggedIn(true);
-          localStorage.setItem('greenhouse_device_id', id);
-          socket.emit('join-device', id);
-      }
-  };
-
-  const handleLogout = () => {
-      setIsLoggedIn(false);
-      setDeviceId('');
-      localStorage.removeItem('greenhouse_device_id');
-      window.location.reload();
-  };
-
-  if (!isLoggedIn) {
-      return (
-          <div className="login-container">
-              <div className="login-box">
-                  <h1>Smart Greenhouse</h1>
-                  <p>Enter your Device ID to connect</p>
-                  <form onSubmit={handleLogin}>
-                      <input type="text" name="deviceId" placeholder="e.g. GH-A1B2C3" required />
-                      <button type="submit">Connect</button>
-                  </form>
-              </div>
+  if (view === 'list') {
+    return (
+      <div className="app-container">
+        <header className="app-header">
+          <h1>My Greenhouses</h1>
+          <button onClick={signOut} className="logout-btn">Sign Out</button>
+        </header>
+        
+        <div className="device-list-container">
+          <div className="add-device-card">
+            <h3>Add New Device</h3>
+            <form onSubmit={addDevice}>
+              <input name="newDeviceId" placeholder="Device ID (e.g. GH-XXXX)" required />
+              <input name="newDeviceName" placeholder="Friendly Name (e.g. Orchid House)" />
+              <button type="submit"><Plus size={16}/> Add Device</button>
+            </form>
           </div>
-      );
+
+          <div className="device-grid">
+            {userDevices.map(dev => (
+              <div key={dev.deviceId} className="device-card" onClick={() => selectDevice(dev.deviceId)}>
+                <h3>{dev.name}</h3>
+                <p>ID: {dev.deviceId}</p>
+                <button className="delete-btn" onClick={(e) => { e.stopPropagation(); removeDevice(dev.deviceId); }}>
+                  <Trash2 size={16}/>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>Smart Greenhouse <span className="device-badge">{deviceId}</span></h1>
+        <div className="header-left">
+          <button onClick={() => setView('list')} className="back-btn">← Back</button>
+          <h1>{userDevices.find(d => d.deviceId === deviceId)?.name || deviceId} <span className="device-badge">{deviceId}</span></h1>
+        </div>
         <div className="status-group">
-            <button onClick={handleLogout} className="logout-btn">Logout</button>
             <div className={`connection-status ${connected ? 'online' : 'offline'}`}>
                 <div className="dot"></div> Server: {connected ? 'Connected' : 'Disconnected'}
             </div>
             <div className={`connection-status ${deviceOnline ? 'online' : 'offline'}`}>
                 <div className="dot"></div> Device: {deviceOnline ? 'Online' : 'Offline'}
-            </div>
-            <div className="last-updated">
-                Last Data: {sensorData.timestamp ? new Date(sensorData.timestamp * 1000).toLocaleTimeString() : 'Never'}
             </div>
         </div>
       </header>
@@ -215,56 +215,17 @@ function App() {
       <main className="dashboard-grid">
         {/* Row 1: Sensors */}
         <section className="sensors-section">
-          <SensorCard 
-            title="Temperature" 
-            value={sensorData.temp} 
-            unit="°C" 
-            icon={Thermometer} 
-            color="#ff7300" 
-          />
-          <SensorCard 
-            title="Humidity" 
-            value={sensorData.hum} 
-            unit="%" 
-            icon={Droplets} 
-            color="#387908" 
-          />
-          <SensorCard 
-            title="Soil Moisture" 
-            value={sensorData.soil} 
-            unit="%" 
-            icon={Waves} 
-            color="#0088fe" 
-          />
-          <SensorCard 
-            title="CO2 Level" 
-            value={sensorData.co2} 
-            unit="ppm" 
-            icon={Wind} 
-            color="#8884d8" 
-          />
-          <SensorCard 
-            title="Tank Level" 
-            value={sensorData.tank_level} 
-            unit="%" 
-            icon={Activity} 
-            color="#00C49F" 
-          />
+          <SensorCard title="Temperature" value={sensorData.temp} unit="°C" icon={Thermometer} color="#ff7300" />
+          <SensorCard title="Humidity" value={sensorData.hum} unit="%" icon={Droplets} color="#387908" />
+          <SensorCard title="Soil Moisture" value={sensorData.soil} unit="%" icon={Waves} color="#0088fe" />
+          <SensorCard title="CO2 Level" value={sensorData.co2} unit="ppm" icon={Wind} color="#8884d8" />
+          <SensorCard title="Tank Level" value={sensorData.tank_level} unit="%" icon={Activity} color="#00C49F" />
         </section>
 
         {/* Row 2: Controls & Config */}
         <section className="controls-section">
-          <ControlPanel 
-            mode={mode} 
-            setMode={handleModeToggle} 
-            devices={devices} 
-            toggleDevice={handleDeviceToggle} 
-            loading={loading}
-          />
-          <ConfigPanel 
-            config={config} 
-            onSave={handleConfigSave} 
-          />
+          <ControlPanel mode={mode} setMode={handleModeToggle} devices={devices} toggleDevice={handleDeviceToggle} loading={loading} />
+          <ConfigPanel config={config} onSave={handleConfigSave} />
         </section>
 
         {/* Row 3: Graphs */}
@@ -273,6 +234,16 @@ function App() {
         </section>
       </main>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Authenticator>
+      {({ signOut, user }) => (
+        <Dashboard user={user} signOut={signOut} />
+      )}
+    </Authenticator>
   );
 }
 
