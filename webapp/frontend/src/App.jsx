@@ -40,6 +40,14 @@ function App() {
   });
 
   const [history, setHistory] = useState([]);
+  
+  // Loading states for UI feedback
+  const [loading, setLoading] = useState({
+    pump: false,
+    fan: false,
+    heater: false,
+    mode: false
+  });
 
   // --- Socket.io Effect ---
   useEffect(() => {
@@ -73,6 +81,14 @@ function App() {
       if (data.mode) {
         setMode(data.mode);
       }
+      
+      // Clear loading states when we receive fresh data
+      setLoading({
+        pump: false,
+        fan: false,
+        heater: false,
+        mode: false
+      });
 
       // Update History
       setHistory(prevHist => {
@@ -100,15 +116,22 @@ function App() {
     if (mode === 'AUTO') return;
     
     const newState = !devices[device];
-    // Optimistic Update
-    setDevices(prev => ({ ...prev, [device]: newState }));
+    
+    // Set loading state
+    setLoading(prev => ({ ...prev, [device]: true }));
 
     // Send Command to Backend
+    // We do NOT update state here (Optimistic UI). 
+    // We wait for the backend to send back the new state via 'sensor-data'.
     socket.emit('control-command', { [device]: newState ? 1 : 0 });
   };
 
   const handleModeToggle = (newMode) => {
-      setMode(newMode);
+      // Set loading state
+      setLoading(prev => ({ ...prev, mode: true }));
+
+      // Send Command to Backend
+      // Wait for confirmation via 'sensor-data' before updating UI
       socket.emit('control-command', { mode: newMode });
   };
 
@@ -182,6 +205,7 @@ function App() {
             setMode={handleModeToggle} 
             devices={devices} 
             toggleDevice={handleDeviceToggle} 
+            loading={loading}
           />
           <ConfigPanel 
             config={config} 
