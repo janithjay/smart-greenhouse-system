@@ -24,11 +24,6 @@ Amplify.configure({
           },
           customParameters: {
             prompt: 'select_account'
-          },
-          customProviderParameters: {
-            Google: {
-              prompt: 'select_account'
-            }
           }
         }
       }
