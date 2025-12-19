@@ -151,13 +151,22 @@ app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
   }
 });
 
-// Load Self-Signed Certs for HTTPS
-const sslOptions = {
-  key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem'))
-};
+// --- Server Setup (HTTP for Prod, HTTPS for Dev) ---
+let server;
+if (process.env.NODE_ENV === 'production') {
+  const http = require('http');
+  server = http.createServer(app);
+  console.log('🚀 Running in PRODUCTION mode (HTTP)');
+} else {
+  // Load Self-Signed Certs for HTTPS (Local Development)
+  const sslOptions = {
+    key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem'))
+  };
+  server = https.createServer(sslOptions, app);
+  console.log('🚀 Running in DEVELOPMENT mode (HTTPS)');
+}
 
-const server = https.createServer(sslOptions, app);
 const io = new Server(server, {
   cors: {
     origin: "*", // Allow all origins for now (or specify frontend URL)
