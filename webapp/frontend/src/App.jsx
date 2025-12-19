@@ -361,18 +361,18 @@ function Dashboard({ user, signOut }) {
 
       <main className="dashboard-grid">
         {/* Row 1: Sensors */}
-        {/* Row 2: Controls & Config */}
-        <section className="controls-section">
-          <ControlPanel mode={mode} setMode={handleModeToggle} devices={devices} toggleDevice={handleDeviceToggle} loading={loading} />
-          <ConfigPanel config={config} onSave={handleConfigSave} onUpdateFirmware={handleFirmwareUpdate} currentVersion={sensorData.version} />
-        </section>ard title="CO2 Level" value={sensorData.co2} unit="ppm" icon={Wind} color="#8884d8" />
+        <section className="sensors-section">
+          <SensorCard title="Temperature" value={sensorData.temp} unit="°C" icon={Thermometer} color="#ff7300" />
+          <SensorCard title="Humidity" value={sensorData.hum} unit="%" icon={Droplets} color="#387908" />
+          <SensorCard title="Soil Moisture" value={sensorData.soil} unit="%" icon={Waves} color="#0088fe" />
+          <SensorCard title="CO2 Level" value={sensorData.co2} unit="ppm" icon={Wind} color="#8884d8" />
           <SensorCard title="Tank Level" value={sensorData.tank_level} unit="%" icon={Activity} color="#00C49F" />
         </section>
 
         {/* Row 2: Controls & Config */}
         <section className="controls-section">
           <ControlPanel mode={mode} setMode={handleModeToggle} devices={devices} toggleDevice={handleDeviceToggle} loading={loading} />
-          <ConfigPanel config={config} onSave={handleConfigSave} />
+          <ConfigPanel config={config} onSave={handleConfigSave} onUpdateFirmware={handleFirmwareUpdate} currentVersion={sensorData.version} />
         </section>
 
         {/* Row 3: Graphs */}
