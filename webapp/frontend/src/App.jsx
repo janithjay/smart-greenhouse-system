@@ -174,13 +174,19 @@ function Dashboard({ user, signOut }) {
     socket.emit('join-device', id);
   };
 
-  const fetchHistory = async (id) => {
+  const fetchHistory = async (id, date = null) => {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      const url = isLocal
+      let url = isLocal
         ? `https://${window.location.hostname}:3001/api/history/${id}`
         : `${window.location.origin}/api/history/${id}`;
+
+      if (date) {
+          const start = Math.floor(new Date(date).setHours(0,0,0,0) / 1000);
+          const end = Math.floor(new Date(date).setHours(23,59,59,999) / 1000);
+          url += `?start=${start}&end=${end}`;
+      }
 
       const res = await fetch(url, {
         headers: { Authorization: token }
@@ -199,6 +205,28 @@ function Dashboard({ user, signOut }) {
         mode: d.mode
       }));
       setHistory(formatted);
+
+      // Load latest historical data into current view (for offline devices)
+      // Only if we are viewing TODAY's data or default view
+      const isToday = !date || date === new Date().toISOString().split('T')[0];
+      if (isToday && data.length > 0) {
+        const latest = data[data.length - 1];
+        setSensorData({
+          temp: latest.temp, 
+          hum: latest.hum, 
+          soil: latest.soil, 
+          co2: latest.co2, 
+          tank_level: latest.tank_level, 
+          timestamp: latest.timestamp * 1000
+        });
+        setDevices({ 
+          pump: latest.pump === 1, 
+          fan: latest.fan === 1, 
+          heater: latest.heater === 1 
+        });
+        if (latest.mode) setMode(latest.mode);
+      }
+
     } catch (err) {
       console.error("Failed to fetch history", err);
     }
@@ -341,7 +369,7 @@ function Dashboard({ user, signOut }) {
 
         {/* Row 3: Graphs */}
         <section className="graph-section">
-          <HistoryGraph data={history} />
+          <HistoryGraph data={history} onDateChange={(date) => fetchHistory(deviceId, date)} />
         </section>
       </main>
     </div>

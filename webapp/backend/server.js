@@ -155,16 +155,23 @@ app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
 // 5. Get Device History
 app.get('/api/history/:deviceId', verifyAuth, async (req, res) => {
   const { deviceId } = req.params;
-  // Default: Last 24 hours
-  const oneDayAgo = Math.floor(Date.now() / 1000) - (24 * 60 * 60);
+  const { start, end } = req.query;
+
+  // Default: Last 24 hours if no range provided
+  let startTime = Math.floor(Date.now() / 1000) - (24 * 60 * 60);
+  let endTime = Math.floor(Date.now() / 1000);
+
+  if (start) startTime = parseInt(start);
+  if (end) endTime = parseInt(end);
 
   const params = {
     TableName: HISTORY_TABLE,
-    KeyConditionExpression: "deviceId = :did AND #ts > :time",
+    KeyConditionExpression: "deviceId = :did AND #ts BETWEEN :start AND :end",
     ExpressionAttributeNames: { "#ts": "timestamp" },
     ExpressionAttributeValues: {
       ":did": deviceId,
-      ":time": oneDayAgo
+      ":start": startTime,
+      ":end": endTime
     },
     ScanIndexForward: true // Return oldest to newest (for graph)
   };
