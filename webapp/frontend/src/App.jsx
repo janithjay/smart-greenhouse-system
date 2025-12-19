@@ -54,7 +54,11 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      const res = await fetch(`https://${window.location.hostname}:${BACKEND_PORT}/api/devices`, {
+      const url = isLocal 
+        ? `https://${window.location.hostname}:3001/api/devices`
+        : `${window.location.origin}/api/devices`;
+        
+      const res = await fetch(url, {
         headers: { Authorization: token }
       });
       const data = await res.json();
@@ -73,7 +77,11 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      await fetch(`https://${window.location.hostname}:${BACKEND_PORT}/api/devices`, {
+      const url = isLocal 
+        ? `https://${window.location.hostname}:3001/api/devices`
+        : `${window.location.origin}/api/devices`;
+
+      await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: token },
         body: JSON.stringify({ deviceId: id, name })
@@ -90,7 +98,11 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      await fetch(`https://${window.location.hostname}:${BACKEND_PORT}/api/devices/${id}`, {
+      const url = isLocal 
+        ? `https://${window.location.hostname}:3001/api/devices/${id}`
+        : `${window.location.origin}/api/devices/${id}`;
+
+      await fetch(url, {
         method: 'DELETE',
         headers: { Authorization: token }
       });
@@ -111,7 +123,11 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      await fetch(`https://${window.location.hostname}:${BACKEND_PORT}/api/devices/${id}`, {
+      const url = isLocal 
+        ? `https://${window.location.hostname}:3001/api/devices/${id}`
+        : `${window.location.origin}/api/devices/${id}`;
+
+      await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: token },
         body: JSON.stringify({ name: newName })
