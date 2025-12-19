@@ -12,9 +12,16 @@ import './App.css';
 import './AuthStyles.css';
 
 // Connect to Backend
-const BACKEND_PORT = 3001;
-const socket = io(`https://${window.location.hostname}:${BACKEND_PORT}`, {
-  rejectUnauthorized: false // Allow self-signed certs in dev
+// In Production (Amplify), we use Rewrites to proxy requests to EC2, so we connect to the same origin.
+// In Development (Localhost), we connect directly to port 3001.
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname.match(/^192\.168\./) || window.location.hostname.match(/^127\./);
+const BACKEND_URL = isLocal 
+  ? `https://${window.location.hostname}:3001` 
+  : window.location.origin;
+
+const socket = io(BACKEND_URL, {
+  rejectUnauthorized: false, // Allow self-signed certs in dev
+  path: '/socket.io' // Standard Socket.io path
 });
 
 function Dashboard({ user, signOut }) {
