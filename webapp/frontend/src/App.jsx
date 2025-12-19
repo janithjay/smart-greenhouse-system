@@ -15,8 +15,8 @@ import './AuthStyles.css';
 // In Production (Amplify), we use Rewrites to proxy requests to EC2, so we connect to the same origin.
 // In Development (Localhost), we connect directly to port 3001.
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname.match(/^192\.168\./) || window.location.hostname.match(/^127\./);
-const BACKEND_URL = isLocal 
-  ? `https://${window.location.hostname}:3001` 
+const BACKEND_URL = isLocal
+  ? `https://${window.location.hostname}:3001`
   : window.location.origin;
 
 const socket = io(BACKEND_URL, {
@@ -29,7 +29,7 @@ function Dashboard({ user, signOut }) {
   const [deviceId, setDeviceId] = useState('');
   const [userDevices, setUserDevices] = useState([]);
   const [view, setView] = useState('list'); // 'list' or 'dashboard'
-  
+
   const [sensorData, setSensorData] = useState({
     temp: 0, hum: 0, soil: 0, co2: 0, tank_level: 0, timestamp: Date.now()
   });
@@ -82,10 +82,10 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      const url = isLocal 
+      const url = isLocal
         ? `https://${window.location.hostname}:3001/api/devices`
         : `${window.location.origin}/api/devices`;
-        
+
       const res = await fetch(url, {
         headers: { Authorization: token }
       });
@@ -105,7 +105,7 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      const url = isLocal 
+      const url = isLocal
         ? `https://${window.location.hostname}:3001/api/devices`
         : `${window.location.origin}/api/devices`;
 
@@ -122,11 +122,11 @@ function Dashboard({ user, signOut }) {
   };
 
   const removeDevice = async (id) => {
-    if(!confirm("Are you sure?")) return;
+    if (!confirm("Are you sure?")) return;
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      const url = isLocal 
+      const url = isLocal
         ? `https://${window.location.hostname}:3001/api/devices/${id}`
         : `${window.location.origin}/api/devices/${id}`;
 
@@ -151,7 +151,7 @@ function Dashboard({ user, signOut }) {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens.idToken.toString();
-      const url = isLocal 
+      const url = isLocal
         ? `https://${window.location.hostname}:3001/api/devices/${id}`
         : `${window.location.origin}/api/devices/${id}`;
 
@@ -175,7 +175,7 @@ function Dashboard({ user, signOut }) {
   // --- Socket.io Effect ---
   useEffect(() => {
     if (deviceId) {
-        socket.emit('join-device', deviceId);
+      socket.emit('join-device', deviceId);
     }
 
     socket.on('connect', () => {
@@ -201,7 +201,7 @@ function Dashboard({ user, signOut }) {
           time: new Date(data.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
           temp: data.temp, hum: data.hum, soil: data.soil
         }];
-        if (newHist.length > 20) newHist.shift(); 
+        if (newHist.length > 20) newHist.shift();
         return newHist;
       });
     });
@@ -223,8 +223,8 @@ function Dashboard({ user, signOut }) {
   };
 
   const handleModeToggle = (newMode) => {
-      setLoading(prev => ({ ...prev, mode: true }));
-      socket.emit('control-command', { mode: newMode });
+    setLoading(prev => ({ ...prev, mode: true }));
+    socket.emit('control-command', { mode: newMode });
   };
 
   const handleConfigSave = (newConfig) => {
@@ -240,14 +240,14 @@ function Dashboard({ user, signOut }) {
           <h1>My Greenhouses</h1>
           <button onClick={signOut} className="logout-btn">Sign Out</button>
         </header>
-        
+
         <div className="device-list-container">
           <div className="add-device-card">
             <h3>Add New Device</h3>
             <form onSubmit={addDevice}>
               <input name="newDeviceId" placeholder="Device ID (e.g. GH-XXXX)" required />
               <input name="newDeviceName" placeholder="Friendly Name (e.g. Orchid House)" />
-              <button type="submit"><Plus size={16}/> Add Device</button>
+              <button type="submit"><Plus size={16} /> Add Device</button>
             </form>
           </div>
 
@@ -258,10 +258,10 @@ function Dashboard({ user, signOut }) {
                 <p>ID: {dev.deviceId}</p>
                 <div className="card-actions">
                   <button className="icon-btn edit-btn" onClick={(e) => { e.stopPropagation(); updateDeviceName(dev.deviceId, dev.name); }}>
-                    <Edit size={16}/>
+                    <Edit size={16} />
                   </button>
                   <button className="icon-btn delete-btn" onClick={(e) => { e.stopPropagation(); removeDevice(dev.deviceId); }}>
-                    <Trash2 size={16}/>
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </div>
@@ -280,12 +280,12 @@ function Dashboard({ user, signOut }) {
           <h1>{userDevices.find(d => d.deviceId === deviceId)?.name || deviceId} <span className="device-badge">{deviceId}</span></h1>
         </div>
         <div className="status-group">
-            <div className={`connection-status ${connected ? 'online' : 'offline'}`}>
-                <div className="dot"></div> Server: {connected ? 'Connected' : 'Disconnected'}
-            </div>
-            <div className={`connection-status ${deviceOnline ? 'online' : 'offline'}`}>
-                <div className="dot"></div> Device: {deviceOnline ? 'Online' : 'Offline'}
-            </div>
+          <div className={`connection-status ${connected ? 'online' : 'offline'}`}>
+            <div className="dot"></div> Server: {connected ? 'Connected' : 'Disconnected'}
+          </div>
+          <div className={`connection-status ${deviceOnline ? 'online' : 'offline'}`}>
+            <div className="dot"></div> Device: {deviceOnline ? 'Online' : 'Offline'}
+          </div>
         </div>
       </header>
 
@@ -319,13 +319,30 @@ function App() {
     <div className="auth-wrapper">
       <Authenticator>
         {({ signOut, user }) => (
-          <Dashboard 
-            user={user} 
+          <Dashboard
+            user={user}
             signOut={async () => {
-              await signOut();
+              const domain = import.meta.env.VITE_COGNITO_DOMAIN;
+              const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
+              const logoutUri = window.location.origin + '/';
+
+              // 1. Tell Amplify to clear local tokens/cookies
+              // The 'signOut' here is the one passed from the Authenticator children props
+              try {
+                await signOut();
+              } catch (error) {
+                console.log("Local sign out handled:", error);
+              }
+
+              // 2. Clear persistence layers
               localStorage.clear();
               sessionStorage.clear();
-            }} 
+
+              // 3. Perform Federated Logout (Redirect to Cognito)
+              // This clears the session on the AWS Domain so Google is forced to re-prompt
+              window.location.href =
+                `https://${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
+            }}
           />
         )}
       </Authenticator>
