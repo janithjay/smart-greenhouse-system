@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Thermometer, Droplets, Wind, Activity, Waves, Plus, Trash2, Edit } from 'lucide-react';
 import io from 'socket.io-client';
-import { Authenticator, useAuthenticator, View, Button, Heading } from '@aws-amplify/ui-react';
+import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
-import { fetchAuthSession, signInWithRedirect } from 'aws-amplify/auth';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import SensorCard from './components/SensorCard';
 import ControlPanel from './components/ControlPanel';
 import ConfigPanel from './components/ConfigPanel';
@@ -314,74 +314,10 @@ function Dashboard({ user, signOut }) {
   );
 }
 
-const components = {
-  SignIn: {
-    Header() {
-      return (
-        <View textAlign="center" padding="medium">
-          <Heading level={3} style={{ marginBottom: '1rem' }}>Sign in</Heading>
-          <Button
-            onClick={() => signInWithRedirect({
-              provider: 'Google',
-              options: {
-                customParameters: {
-                  prompt: 'select_account'
-                }
-              }
-            })}
-            isFullWidth={true}
-            variation="primary"
-            style={{ marginBottom: '1rem' }}
-          >
-            Sign in with Google
-          </Button>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-            <div style={{ flex: 1, height: '1px', backgroundColor: '#ccc' }}></div>
-            <span style={{ padding: '0 10px', color: '#666' }}>or</span>
-            <div style={{ flex: 1, height: '1px', backgroundColor: '#ccc' }}></div>
-          </div>
-        </View>
-      );
-    },
-  },
-};
-
 function App() {
-  const components = {
-    SignIn: {
-      Header() {
-        return (
-          <View textAlign="center" padding="medium">
-            <Heading level={3} style={{ marginBottom: '1rem' }}>Sign in</Heading>
-            <Button
-              onClick={() => signInWithRedirect({
-                provider: 'Google',
-                options: {
-                  customParameters: {
-                    prompt: 'select_account'
-                  }
-                }
-              })}
-              isFullWidth={true}
-              variation="primary"
-              style={{ marginBottom: '1rem', backgroundColor: '#4285F4', color: 'white', border: 'none' }}
-            >
-              Sign in with Google
-            </Button>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
-              <div style={{ flex: 1, height: '1px', backgroundColor: '#ccc' }}></div>
-              <span style={{ padding: '0 10px', color: '#666' }}>or</span>
-              <div style={{ flex: 1, height: '1px', backgroundColor: '#ccc' }}></div>
-            </div>
-          </View>
-        );
-      },
-    },
-  };
-
   return (
     <div className="auth-wrapper">
-      <Authenticator components={components} socialProviders={[]}>
+      <Authenticator>
         {({ signOut, user }) => (
           <Dashboard 
             user={user} 
