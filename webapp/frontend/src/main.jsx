@@ -21,10 +21,10 @@ Amplify.configure({
           providers: ['Google'],
           options: {
             AdvancedSecurityDataCollectionFlag: false,
+            customParameters: {
+              prompt: 'select_account'
+            }
           },
-          customParameters: {
-            prompt: 'select_account'
-          }
         }
       }
     }
