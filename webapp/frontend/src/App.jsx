@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Thermometer, Droplets, Wind, Activity, Waves, Plus, Trash2, Edit } from 'lucide-react';
 import io from 'socket.io-client';
-import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
+import { Authenticator, useAuthenticator, View, Button, Heading } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
-import { fetchAuthSession } from 'aws-amplify/auth';
+import { fetchAuthSession, signInWithRedirect } from 'aws-amplify/auth';
 import SensorCard from './components/SensorCard';
 import ControlPanel from './components/ControlPanel';
 import ConfigPanel from './components/ConfigPanel';
@@ -329,7 +329,11 @@ function App() {
               const logoutUri = window.location.origin + '/';
 
               // 1️⃣ Fully clear Cognito + federated IdP state
-              await amplifySignOut({ global: true });
+              try {
+                await amplifySignOut({ global: true });
+              } catch (error) {
+                console.warn("Amplify signOut failed (ignoring):", error);
+              }
 
               // 2️⃣ Hard redirect through Hosted UI logout
               window.location.href =
