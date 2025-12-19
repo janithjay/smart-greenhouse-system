@@ -174,10 +174,41 @@ function Dashboard({ user, signOut }) {
     socket.emit('join-device', id);
   };
 
+  const fetchHistory = async (id) => {
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens.idToken.toString();
+      const url = isLocal
+        ? `https://${window.location.hostname}:3001/api/history/${id}`
+        : `${window.location.origin}/api/history/${id}`;
+
+      const res = await fetch(url, {
+        headers: { Authorization: token }
+      });
+      const data = await res.json();
+      
+      // Format for graph
+      const formatted = data.map(d => ({
+        time: new Date(d.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        temp: d.temp,
+        hum: d.hum,
+        soil: d.soil,
+        pump: d.pump ? 1 : 0,
+        fan: d.fan ? 1 : 0,
+        heater: d.heater ? 1 : 0,
+        mode: d.mode
+      }));
+      setHistory(formatted);
+    } catch (err) {
+      console.error("Failed to fetch history", err);
+    }
+  };
+
   // --- Socket.io Effect ---
   useEffect(() => {
     if (deviceId) {
       socket.emit('join-device', deviceId);
+      fetchHistory(deviceId);
     }
 
     socket.on('connect', () => {
@@ -201,9 +232,10 @@ function Dashboard({ user, signOut }) {
       setHistory(prev => {
         const newHist = [...prev, {
           time: new Date(data.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          temp: data.temp, hum: data.hum, soil: data.soil
+          temp: data.temp, hum: data.hum, soil: data.soil,
+          pump: data.pump ? 1 : 0, fan: data.fan ? 1 : 0, heater: data.heater ? 1 : 0, mode: data.mode
         }];
-        if (newHist.length > 20) newHist.shift();
+        if (newHist.length > 50) newHist.shift(); // Increased history size
         return newHist;
       });
     });

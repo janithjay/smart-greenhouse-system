@@ -28,6 +28,7 @@ AWS.config.update({
 });
 const docClient = new AWS.DynamoDB.DocumentClient();
 const TABLE_NAME = "GreenhouseUserDevices";
+const HISTORY_TABLE = "GreenhouseSensorData";
 
 // --- Cognito Verifier ---
 const verifier = CognitoJwtVerifier.create({
@@ -151,6 +152,32 @@ app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
   }
 });
 
+// 5. Get Device History
+app.get('/api/history/:deviceId', verifyAuth, async (req, res) => {
+  const { deviceId } = req.params;
+  // Default: Last 24 hours
+  const oneDayAgo = Math.floor(Date.now() / 1000) - (24 * 60 * 60);
+
+  const params = {
+    TableName: HISTORY_TABLE,
+    KeyConditionExpression: "deviceId = :did AND #ts > :time",
+    ExpressionAttributeNames: { "#ts": "timestamp" },
+    ExpressionAttributeValues: {
+      ":did": deviceId,
+      ":time": oneDayAgo
+    },
+    ScanIndexForward: true // Return oldest to newest (for graph)
+  };
+
+  try {
+    const data = await docClient.query(params).promise();
+    res.json(data.Items);
+  } catch (err) {
+    console.error("DynamoDB History Error:", err);
+    res.status(500).json({ error: "Failed to fetch history" });
+  }
+});
+
 // --- Server Setup (HTTP for Prod, HTTPS for Dev) ---
 let server;
 if (process.env.NODE_ENV === 'production') {
@@ -229,9 +256,29 @@ if (certsExist && AWS_IOT_ENDPOINT) {
                 io.to(deviceId).emit('sensor-data', data);
                 io.to(deviceId).emit('device-status', { online: true });
                 
-                // Store last known data for this device (optional, for quick load)
-                // In a real app, use a DB (Redis/DynamoDB)
-                // deviceDataStore[deviceId] = data; 
+                // --- SAVE TO DYNAMODB ---
+                const dbParams = {
+                    TableName: HISTORY_TABLE,
+                    Item: {
+                        deviceId: deviceId,
+                        timestamp: data.timestamp || Math.floor(Date.now() / 1000),
+                        temp: data.temp,
+                        hum: data.hum,
+                        soil: data.soil,
+                        co2: data.co2,
+                        tank_level: data.tank_level,
+                        pump: data.pump,
+                        fan: data.fan,
+                        heater: data.heater,
+                        mode: data.mode
+                    }
+                };
+                
+                // Fire and forget (don't await to keep socket fast)
+                docClient.put(dbParams).promise().catch(err => {
+                    console.error("Failed to save history:", err);
+                });
+
             } catch (e) {
                 console.error('Error parsing JSON:', e);
             }
