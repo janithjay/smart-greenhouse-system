@@ -65,7 +65,6 @@ function Dashboard({ user, signOut }) {
         if (elapsed >= limit) {
           console.log("Session expired (24h limit). Signing out.");
           await signOut();
-          localStorage.clear();
           window.location.reload();
         }
       } catch (err) {

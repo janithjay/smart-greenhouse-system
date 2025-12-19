@@ -22,9 +22,13 @@ Amplify.configure({
           options: {
             AdvancedSecurityDataCollectionFlag: false
           },
-          // Force account selection on Google login
           customParameters: {
             prompt: 'select_account'
+          },
+          customProviderParameters: {
+            Google: {
+              prompt: 'select_account'
+            }
           }
         }
       }
