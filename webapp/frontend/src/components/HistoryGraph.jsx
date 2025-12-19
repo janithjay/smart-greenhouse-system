@@ -68,18 +68,24 @@ const HistoryGraph = ({ data, onDateChange }) => {
       <div className="graph-card" style={{marginBottom: '20px', background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
         <h4>Overview</h4>
         <div style={{ width: '100%', height: 250 }}>
-            <ResponsiveContainer>
-            <LineChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" tick={{fill: '#666'}} />
-                <YAxis stroke="#666" tick={{fill: '#666'}} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Line type="monotone" dataKey="temp" stroke="#ff7300" name="Temp (°C)" dot={false} strokeWidth={2} />
-                <Line type="monotone" dataKey="hum" stroke="#387908" name="Humidity (%)" dot={false} strokeWidth={2} />
-                <Line type="monotone" dataKey="soil" stroke="#0088fe" name="Soil (%)" dot={false} strokeWidth={2} />
-            </LineChart>
-            </ResponsiveContainer>
+            {(!data || data.length === 0) ? (
+                <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>
+                    No Data Available
+                </div>
+            ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                    <XAxis dataKey="time" stroke="#666" tick={{fill: '#666'}} />
+                    <YAxis stroke="#666" tick={{fill: '#666'}} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend />
+                    <Line type="monotone" dataKey="temp" stroke="#ff7300" name="Temp (°C)" dot={false} strokeWidth={2} />
+                    <Line type="monotone" dataKey="hum" stroke="#387908" name="Humidity (%)" dot={false} strokeWidth={2} />
+                    <Line type="monotone" dataKey="soil" stroke="#0088fe" name="Soil (%)" dot={false} strokeWidth={2} />
+                </LineChart>
+                </ResponsiveContainer>
+            )}
         </div>
       </div>
 
@@ -88,16 +94,20 @@ const HistoryGraph = ({ data, onDateChange }) => {
         <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
             <h4>Temperature & Heater</h4>
             <div style={{ width: '100%', height: 200 }}>
-                <ResponsiveContainer>
-                <AreaChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#666" tick={false} />
-                    <YAxis stroke="#666" />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="temp" stroke="#ff7300" fill="#ff7300" fillOpacity={0.1} name="Temp (°C)" />
-                    <Area type="step" dataKey="heater" stroke="#ff0000" fill="#ff0000" fillOpacity={0.2} name="Heater (On/Off)" />
-                </AreaChart>
-                </ResponsiveContainer>
+                {(!data || data.length === 0) ? (
+                    <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
+                ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={data}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                        <XAxis dataKey="time" stroke="#666" tick={false} />
+                        <YAxis stroke="#666" />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Area type="monotone" dataKey="temp" stroke="#ff7300" fill="#ff7300" fillOpacity={0.1} name="Temp (°C)" />
+                        <Area type="step" dataKey="heater" stroke="#ff0000" fill="#ff0000" fillOpacity={0.2} name="Heater (On/Off)" />
+                    </AreaChart>
+                    </ResponsiveContainer>
+                )}
             </div>
         </div>
 
@@ -105,16 +115,20 @@ const HistoryGraph = ({ data, onDateChange }) => {
         <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
             <h4>Humidity & Fan</h4>
             <div style={{ width: '100%', height: 200 }}>
-                <ResponsiveContainer>
-                <AreaChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#666" tick={false} />
-                    <YAxis stroke="#666" />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="hum" stroke="#387908" fill="#387908" fillOpacity={0.1} name="Humidity (%)" />
-                    <Area type="step" dataKey="fan" stroke="#00ff00" fill="#00ff00" fillOpacity={0.2} name="Fan (On/Off)" />
-                </AreaChart>
-                </ResponsiveContainer>
+                {(!data || data.length === 0) ? (
+                    <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
+                ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={data}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                        <XAxis dataKey="time" stroke="#666" tick={false} />
+                        <YAxis stroke="#666" />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Area type="monotone" dataKey="hum" stroke="#387908" fill="#387908" fillOpacity={0.1} name="Humidity (%)" />
+                        <Area type="step" dataKey="fan" stroke="#00ff00" fill="#00ff00" fillOpacity={0.2} name="Fan (On/Off)" />
+                    </AreaChart>
+                    </ResponsiveContainer>
+                )}
             </div>
         </div>
 
@@ -122,16 +136,20 @@ const HistoryGraph = ({ data, onDateChange }) => {
         <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
             <h4>Soil Moisture & Pump</h4>
             <div style={{ width: '100%', height: 200 }}>
-                <ResponsiveContainer>
-                <AreaChart data={data}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                    <XAxis dataKey="time" stroke="#666" tick={false} />
-                    <YAxis stroke="#666" />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="soil" stroke="#0088fe" fill="#0088fe" fillOpacity={0.1} name="Soil (%)" />
-                    <Area type="step" dataKey="pump" stroke="#0000ff" fill="#0000ff" fillOpacity={0.2} name="Pump (On/Off)" />
-                </AreaChart>
-                </ResponsiveContainer>
+                {(!data || data.length === 0) ? (
+                    <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
+                ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={data}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                        <XAxis dataKey="time" stroke="#666" tick={false} />
+                        <YAxis stroke="#666" />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Area type="monotone" dataKey="soil" stroke="#0088fe" fill="#0088fe" fillOpacity={0.1} name="Soil (%)" />
+                        <Area type="step" dataKey="pump" stroke="#0000ff" fill="#0000ff" fillOpacity={0.2} name="Pump (On/Off)" />
+                    </AreaChart>
+                    </ResponsiveContainer>
+                )}
             </div>
         </div>
       </div>
