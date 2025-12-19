@@ -50,6 +50,35 @@ function Dashboard({ user, signOut }) {
     fetchDevices();
   }, []);
 
+  // --- Session Timeout Check (24 Hours) ---
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const session = await fetchAuthSession();
+        if (!session.tokens?.idToken?.payload?.auth_time) return;
+
+        const authTime = session.tokens.idToken.payload.auth_time;
+        const now = Math.floor(Date.now() / 1000);
+        const elapsed = now - authTime;
+        const limit = 24 * 60 * 60; // 24 hours in seconds
+
+        if (elapsed >= limit) {
+          console.log("Session expired (24h limit). Signing out.");
+          await signOut();
+          localStorage.clear();
+          window.location.reload();
+        }
+      } catch (err) {
+        console.error("Session check failed", err);
+      }
+    };
+
+    // Check immediately and every minute
+    checkSession();
+    const interval = setInterval(checkSession, 60000);
+    return () => clearInterval(interval);
+  }, [signOut]);
+
   const fetchDevices = async () => {
     try {
       const session = await fetchAuthSession();
@@ -291,7 +320,14 @@ function App() {
     <div className="auth-wrapper">
       <Authenticator>
         {({ signOut, user }) => (
-          <Dashboard user={user} signOut={signOut} />
+          <Dashboard 
+            user={user} 
+            signOut={async () => {
+              await signOut();
+              localStorage.clear();
+              sessionStorage.clear();
+            }} 
+          />
         )}
       </Authenticator>
     </div>

@@ -21,26 +21,8 @@ Amplify.configure({
           providers: ['Google'],
           options: {
             AdvancedSecurityDataCollectionFlag: false
-          }
-        }
-      }
-    }
-  }
-});
-
-// Add a custom parameter to force account selection
-const currentConfig = Amplify.getConfig();
-Amplify.configure({
-  ...currentConfig,
-  Auth: {
-    ...currentConfig.Auth,
-    Cognito: {
-      ...currentConfig.Auth?.Cognito,
-      loginWith: {
-        ...currentConfig.Auth?.Cognito?.loginWith,
-        oauth: {
-          ...currentConfig.Auth?.Cognito?.loginWith?.oauth,
-          providers: ['Google'],
+          },
+          // Force account selection on Google login
           customParameters: {
             prompt: 'select_account'
           }
