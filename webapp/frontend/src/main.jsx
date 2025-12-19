@@ -20,7 +20,7 @@ Amplify.configure({
           responseType: 'code',
           providers: ['Google'],
           options: {
-            AdvancedSecurityDataCollectionFlag: false
+            AdvancedSecurityDataCollectionFlag: false,
           },
           customParameters: {
             prompt: 'select_account'

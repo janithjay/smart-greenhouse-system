@@ -10,6 +10,8 @@ import ConfigPanel from './components/ConfigPanel';
 import HistoryGraph from './components/HistoryGraph';
 import './App.css';
 import './AuthStyles.css';
+import { signOut as amplifySignOut } from 'aws-amplify/auth';
+
 
 // Connect to Backend
 // In Production (Amplify), we use Rewrites to proxy requests to EC2, so we connect to the same origin.
@@ -326,22 +328,14 @@ function App() {
               const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
               const logoutUri = window.location.origin + '/';
 
-              // 1. Tell Amplify to clear local tokens/cookies
-              // The 'signOut' here is the one passed from the Authenticator children props
-              try {
-                await signOut();
-              } catch (error) {
-                console.log("Local sign out handled:", error);
-              }
+              // 1️⃣ Fully clear Cognito + federated IdP state
+              await amplifySignOut({ global: true });
 
-              // 2. Clear persistence layers
-              localStorage.clear();
-              sessionStorage.clear();
-
-              // 3. Perform Federated Logout (Redirect to Cognito)
-              // This clears the session on the AWS Domain so Google is forced to re-prompt
+              // 2️⃣ Hard redirect through Hosted UI logout
               window.location.href =
-                `https://${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
+                `https://${domain}/logout` +
+                `?client_id=${clientId}` +
+                `&logout_uri=${encodeURIComponent(logoutUri)}`;
             }}
           />
         )}
