@@ -23,3 +23,5 @@ webapp/yarn-error.log*
 .DS_Store
 Thumbs.db
 
+deploy-ec2.sh
+nginx.conf

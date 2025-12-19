@@ -33,7 +33,7 @@ function Dashboard({ user, signOut }) {
   const [view, setView] = useState('list'); // 'list' or 'dashboard'
 
   const [sensorData, setSensorData] = useState({
-    temp: 0, hum: 0, soil: 0, co2: 0, tank_level: 0, timestamp: Date.now()
+    temp: 0, hum: 0, soil: 0, co2: 0, tank_level: 0, timestamp: Date.now(), version: 'Unknown'
   });
 
   const [devices, setDevices] = useState({ pump: false, fan: false, heater: false });
@@ -295,6 +295,14 @@ function Dashboard({ user, signOut }) {
     alert("Configuration Sent to Device");
   };
 
+  const handleFirmwareUpdate = (url) => {
+    if (!url) return;
+    if (!confirm(`WARNING: This will update the device firmware from:\n${url}\n\nDo you want to proceed?`)) return;
+    
+    socket.emit('control-command', { update_url: url });
+    alert("Update Command Sent! The device will reboot if the update is successful.");
+  };
+
   if (view === 'list') {
     return (
       <div className="app-container">
@@ -353,11 +361,11 @@ function Dashboard({ user, signOut }) {
 
       <main className="dashboard-grid">
         {/* Row 1: Sensors */}
-        <section className="sensors-section">
-          <SensorCard title="Temperature" value={sensorData.temp} unit="°C" icon={Thermometer} color="#ff7300" />
-          <SensorCard title="Humidity" value={sensorData.hum} unit="%" icon={Droplets} color="#387908" />
-          <SensorCard title="Soil Moisture" value={sensorData.soil} unit="%" icon={Waves} color="#0088fe" />
-          <SensorCard title="CO2 Level" value={sensorData.co2} unit="ppm" icon={Wind} color="#8884d8" />
+        {/* Row 2: Controls & Config */}
+        <section className="controls-section">
+          <ControlPanel mode={mode} setMode={handleModeToggle} devices={devices} toggleDevice={handleDeviceToggle} loading={loading} />
+          <ConfigPanel config={config} onSave={handleConfigSave} onUpdateFirmware={handleFirmwareUpdate} currentVersion={sensorData.version} />
+        </section>ard title="CO2 Level" value={sensorData.co2} unit="ppm" icon={Wind} color="#8884d8" />
           <SensorCard title="Tank Level" value={sensorData.tank_level} unit="%" icon={Activity} color="#00C49F" />
         </section>
 

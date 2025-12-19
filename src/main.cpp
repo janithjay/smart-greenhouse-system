@@ -21,6 +21,7 @@
 Preferences preferences;
 
 // --- CONFIGURABLE PARAMETERS (Loaded from NVS) ---
+const char* FIRMWARE_VERSION = "1.0.0"; // Current Firmware Version
 float TEMP_MIN_NIGHT = 20.0;  // Heater ON below this
 float TEMP_MAX_DAY   = 30.0;  // Fan ON above this
 float HUM_MAX        = 75.0;  // Fan ON above this
@@ -761,10 +762,10 @@ void TaskConnectivity(void *pvParameters) {
       // Unified Data Logging & Publishing (Runs regardless of WiFi)
       static unsigned long lastDataGen = 0;
       if (millis() - lastDataGen > 5000) {
-          char jsonBuffer[400]; 
+          char jsonBuffer[512]; // Increased buffer size
           snprintf(jsonBuffer, sizeof(jsonBuffer), 
-            "{\"device_id\": \"%s\", \"timestamp\": %lu, \"temp\": %.1f, \"hum\": %.1f, \"soil\": %d, \"co2\": %d, \"tvoc\": %d, \"tank_level\": %d, \"pump\": %d, \"fan\": %d, \"heater\": %d, \"mode\": \"%s\"}", 
-            deviceId, (unsigned long)time(nullptr),
+            "{\"device_id\": \"%s\", \"version\": \"%s\", \"timestamp\": %lu, \"temp\": %.1f, \"hum\": %.1f, \"soil\": %d, \"co2\": %d, \"tvoc\": %d, \"tank_level\": %d, \"pump\": %d, \"fan\": %d, \"heater\": %d, \"mode\": \"%s\"}", 
+            deviceId, FIRMWARE_VERSION, (unsigned long)time(nullptr),
             currentTemp, currentHum, soilMoisture, eco2, tvoc, waterTankLevel,
             pumpStatus ? 1 : 0, fanStatus ? 1 : 0, heaterStatus ? 1 : 0,
             manualMode ? "MANUAL" : "AUTO");
