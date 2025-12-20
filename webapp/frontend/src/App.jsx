@@ -423,7 +423,10 @@ function Dashboard({ user, signOut }) {
       <header className="app-header">
         <div className="header-left">
           <button onClick={() => setView('list')} className="back-btn">← Back</button>
-          <h1>{userDevices.find(d => d.deviceId === deviceId)?.name || deviceId} <span className="device-badge">{deviceId}</span></h1>
+          <div className="header-title-group">
+            <h1>{userDevices.find(d => d.deviceId === deviceId)?.name || deviceId}</h1>
+            <span className="device-badge">{deviceId}</span>
+          </div>
         </div>
         <div className="status-group">
           <div className={`connection-status ${connected ? 'online' : 'offline'}`}>

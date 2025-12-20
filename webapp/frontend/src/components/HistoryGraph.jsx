@@ -66,7 +66,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
 
       {/* 1. Combined Overview */}
       <div className="graph-card" style={{marginBottom: '20px', background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
-        <h4>Overview</h4>
+        <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Overview</h4>
         <div style={{ width: '100%', height: 250 }}>
             {(!data || data.length === 0) ? (
                 <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>
@@ -92,7 +92,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
       <div className="detailed-graphs">
         {/* 2. Temperature & Heater */}
         <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
-            <h4>Temperature & Heater</h4>
+            <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Temperature & Heater</h4>
             <div style={{ width: '100%', height: 200 }}>
                 {(!data || data.length === 0) ? (
                     <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
@@ -113,7 +113,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
 
         {/* 3. Humidity & Fan */}
         <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
-            <h4>Humidity & Fan</h4>
+            <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Humidity & Fan</h4>
             <div style={{ width: '100%', height: 200 }}>
                 {(!data || data.length === 0) ? (
                     <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
@@ -134,7 +134,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
 
         {/* 4. Soil & Pump */}
         <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
-            <h4>Soil Moisture & Pump</h4>
+            <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Soil Moisture & Pump</h4>
             <div style={{ width: '100%', height: 200 }}>
                 {(!data || data.length === 0) ? (
                     <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>

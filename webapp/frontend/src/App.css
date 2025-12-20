@@ -647,6 +647,15 @@ input.error {
 .header-left {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .device-badge {
@@ -655,7 +664,7 @@ input.error {
   padding: 2px 8px;
   border-radius: 12px;
   vertical-align: middle;
-  margin-left: 10px;
+  white-space: nowrap;
 }
 
 /* Modal Styles */
