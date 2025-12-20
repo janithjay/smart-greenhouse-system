@@ -142,6 +142,18 @@ const ConfigPanel = ({ config, onSave, onUpdateFirmware, currentVersion, onViewL
             onChange={handleChange}
             className={errors.tank_empty_dist ? 'error' : ''}
           />
+          {errors.tank_empty_dist && <span className="error-msg">{errors.tank_empty_dist}</span>}
+        </div>
+        <div className="form-group">
+          <label>Tank Full Distance (cm)</label>
+          <input
+            type="number"
+            name="tank_full_dist"
+            value={localConfig.tank_full_dist}
+            onChange={handleChange}
+            className={errors.tank_full_dist ? 'error' : ''}
+          />
+          {errors.tank_full_dist && <span className="error-msg">{errors.tank_full_dist}</span>}
         </div>
         <button type="submit" className="save-btn">
           <Save size={16} style={{ marginRight: '5px' }} /> Save Settings
