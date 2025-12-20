@@ -7,11 +7,18 @@ const CustomTooltip = ({ active, payload, label }) => {
     return (
       <div className="custom-tooltip" style={{ backgroundColor: '#333', padding: '10px', border: '1px solid #555', color: '#fff' }}>
         <p className="label">{`Time: ${label}`}</p>
-        {payload.map((entry, index) => (
-            <p key={index} style={{color: entry.color}}>
-                {`${entry.name}: ${entry.value}`}
-            </p>
-        ))}
+        {payload.map((entry, index) => {
+            // Format Boolean Values for Actuators
+            let value = entry.value;
+            if (entry.name.includes("Status")) {
+                value = entry.value === 1 ? "ON" : "OFF";
+            }
+            return (
+                <p key={index} style={{color: entry.color}}>
+                    {`${entry.name}: ${value}`}
+                </p>
+            );
+        })}
         <hr style={{borderColor: '#555', margin: '5px 0'}}/>
         <p>{`Mode: ${data.mode || 'AUTO'}`}</p>
       </div>
@@ -101,10 +108,11 @@ const HistoryGraph = ({ data, onDateChange }) => {
                     <AreaChart data={data}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                         <XAxis dataKey="time" stroke="#666" tick={false} />
-                        <YAxis stroke="#666" />
+                        <YAxis yAxisId="left" stroke="#666" />
+                        <YAxis yAxisId="right" orientation="right" domain={[0, 1]} hide />
                         <Tooltip content={<CustomTooltip />} />
-                        <Area type="monotone" dataKey="temp" stroke="#ff7300" fill="#ff7300" fillOpacity={0.1} name="Temp (°C)" />
-                        <Area type="step" dataKey="heater" stroke="#ff0000" fill="#ff0000" fillOpacity={0.2} name="Heater (On/Off)" />
+                        <Area yAxisId="left" type="monotone" dataKey="temp" stroke="#ff7300" fill="#ff7300" fillOpacity={0.3} name="Temp (°C)" />
+                        <Area yAxisId="right" type="step" dataKey="heater" stroke="none" fill="#ff0000" fillOpacity={0.15} name="Heater Status" />
                     </AreaChart>
                     </ResponsiveContainer>
                 )}
@@ -122,10 +130,11 @@ const HistoryGraph = ({ data, onDateChange }) => {
                     <AreaChart data={data}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                         <XAxis dataKey="time" stroke="#666" tick={false} />
-                        <YAxis stroke="#666" />
+                        <YAxis yAxisId="left" stroke="#666" />
+                        <YAxis yAxisId="right" orientation="right" domain={[0, 1]} hide />
                         <Tooltip content={<CustomTooltip />} />
-                        <Area type="monotone" dataKey="hum" stroke="#387908" fill="#387908" fillOpacity={0.1} name="Humidity (%)" />
-                        <Area type="step" dataKey="fan" stroke="#00ff00" fill="#00ff00" fillOpacity={0.2} name="Fan (On/Off)" />
+                        <Area yAxisId="left" type="monotone" dataKey="hum" stroke="#387908" fill="#387908" fillOpacity={0.3} name="Humidity (%)" />
+                        <Area yAxisId="right" type="step" dataKey="fan" stroke="none" fill="#00ff00" fillOpacity={0.15} name="Fan Status" />
                     </AreaChart>
                     </ResponsiveContainer>
                 )}
@@ -143,10 +152,11 @@ const HistoryGraph = ({ data, onDateChange }) => {
                     <AreaChart data={data}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                         <XAxis dataKey="time" stroke="#666" tick={false} />
-                        <YAxis stroke="#666" />
+                        <YAxis yAxisId="left" stroke="#666" />
+                        <YAxis yAxisId="right" orientation="right" domain={[0, 1]} hide />
                         <Tooltip content={<CustomTooltip />} />
-                        <Area type="monotone" dataKey="soil" stroke="#0088fe" fill="#0088fe" fillOpacity={0.1} name="Soil (%)" />
-                        <Area type="step" dataKey="pump" stroke="#0000ff" fill="#0000ff" fillOpacity={0.2} name="Pump (On/Off)" />
+                        <Area yAxisId="left" type="monotone" dataKey="soil" stroke="#0088fe" fill="#0088fe" fillOpacity={0.3} name="Soil (%)" />
+                        <Area yAxisId="right" type="step" dataKey="pump" stroke="none" fill="#0000ff" fillOpacity={0.15} name="Pump Status" />
                     </AreaChart>
                     </ResponsiveContainer>
                 )}
