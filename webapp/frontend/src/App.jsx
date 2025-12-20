@@ -8,6 +8,7 @@ import SensorCard from './components/SensorCard';
 import ControlPanel from './components/ControlPanel';
 import ConfigPanel from './components/ConfigPanel';
 import HistoryGraph from './components/HistoryGraph';
+import AlertLog from './components/AlertLog';
 import './App.css';
 import './AuthStyles.css';
 import { signOut as amplifySignOut } from 'aws-amplify/auth';
@@ -46,6 +47,8 @@ function Dashboard({ user, signOut }) {
   });
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState({ pump: false, fan: false, heater: false, mode: false });
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [alerts, setAlerts] = useState([]);
 
   // --- Fetch Devices on Load ---
   useEffect(() => {
@@ -232,11 +235,30 @@ function Dashboard({ user, signOut }) {
     }
   };
 
+  const fetchAlerts = async (id) => {
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens.idToken.toString();
+      const url = isLocal
+        ? `https://${window.location.hostname}:3001/api/alerts/${id}`
+        : `${window.location.origin}/api/alerts/${id}`;
+
+      const res = await fetch(url, {
+        headers: { Authorization: token }
+      });
+      const data = await res.json();
+      setAlerts(data);
+    } catch (err) {
+      console.error("Failed to fetch alerts", err);
+    }
+  };
+
   // --- Socket.io Effect ---
   useEffect(() => {
     if (deviceId) {
       socket.emit('join-device', deviceId);
       fetchHistory(deviceId);
+      fetchAlerts(deviceId);
     }
 
     socket.on('connect', () => {
@@ -251,6 +273,15 @@ function Dashboard({ user, signOut }) {
 
     socket.on('device-status', (status) => setDeviceOnline(status.online));
     socket.on('config-error', (err) => alert(err.message));
+    
+    // Handle Critical Alerts (e.g., Rollback)
+    socket.on('device-alert', (alertData) => {
+        if (alertData.alert === 'ROLLBACK_EXECUTED') {
+            alert(`⚠️ CRITICAL ALERT: ${alertData.message}`);
+        }
+        // Refresh alerts list
+        fetchAlerts(deviceId);
+    });
 
     socket.on('sensor-data', (data) => {
       setSensorData(data);
@@ -273,6 +304,7 @@ function Dashboard({ user, signOut }) {
       socket.off('disconnect');
       socket.off('device-status');
       socket.off('config-error');
+      socket.off('device-alert');
       socket.off('sensor-data');
     };
   }, [deviceId]);
@@ -372,7 +404,13 @@ function Dashboard({ user, signOut }) {
         {/* Row 2: Controls & Config */}
         <section className="controls-section">
           <ControlPanel mode={mode} setMode={handleModeToggle} devices={devices} toggleDevice={handleDeviceToggle} loading={loading} />
-          <ConfigPanel config={config} onSave={handleConfigSave} onUpdateFirmware={handleFirmwareUpdate} currentVersion={sensorData.version} />
+          <ConfigPanel 
+            config={config} 
+            onSave={handleConfigSave} 
+            onUpdateFirmware={handleFirmwareUpdate} 
+            currentVersion={sensorData.version}
+            onViewLogs={() => setShowAlerts(true)}
+          />
         </section>
 
         {/* Row 3: Graphs */}
@@ -380,6 +418,8 @@ function Dashboard({ user, signOut }) {
           <HistoryGraph data={history} onDateChange={(date) => fetchHistory(deviceId, date)} />
         </section>
       </main>
+
+      {showAlerts && <AlertLog alerts={alerts} onClose={() => setShowAlerts(false)} />}
     </div>
   );
 }

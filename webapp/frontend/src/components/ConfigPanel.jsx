@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Save, UploadCloud, AlertTriangle } from 'lucide-react';
+import { Save, UploadCloud, AlertTriangle, FileText } from 'lucide-react';
 
-const ConfigPanel = ({ config, onSave, onUpdateFirmware, currentVersion }) => {
+const ConfigPanel = ({ config, onSave, onUpdateFirmware, currentVersion, onViewLogs }) => {
   const [localConfig, setLocalConfig] = useState(config);
   const [errors, setErrors] = useState({});
   const [updateUrl, setUpdateUrl] = useState('');
@@ -60,8 +60,17 @@ const ConfigPanel = ({ config, onSave, onUpdateFirmware, currentVersion }) => {
     <div className="config-panel">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <h3 style={{ margin: 0 }}>Configuration</h3>
-        <div style={{ fontSize: '0.8em', color: '#888' }}>
-          FW: <span style={{ color: '#fff' }}>{currentVersion || '...'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button 
+                onClick={onViewLogs} 
+                title="View System Logs"
+                style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', padding: '4px' }}
+            >
+                <FileText size={16} />
+            </button>
+            <div style={{ fontSize: '0.8em', color: '#888' }}>
+            FW: <span style={{ color: '#fff' }}>{currentVersion || '...'}</span>
+            </div>
         </div>
       </div>
 

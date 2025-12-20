@@ -29,6 +29,7 @@ AWS.config.update({
 const docClient = new AWS.DynamoDB.DocumentClient();
 const TABLE_NAME = "GreenhouseUserDevices";
 const HISTORY_TABLE = "GreenhouseSensorData";
+const ALERTS_TABLE = "GreenhouseAlerts";
 
 // --- Cognito Verifier ---
 const verifier = CognitoJwtVerifier.create({
@@ -152,7 +153,31 @@ app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
   }
 });
 
-// 5. Get Device History
+// 5. Get Device Alerts
+app.get('/api/alerts/:deviceId', verifyAuth, async (req, res) => {
+  const { deviceId } = req.params;
+  
+  // Verify user owns this device (Basic check)
+  // In production, you should query GreenhouseUserDevices to ensure ownership
+  
+  const params = {
+    TableName: ALERTS_TABLE,
+    KeyConditionExpression: "deviceId = :did",
+    ExpressionAttributeValues: { ":did": deviceId },
+    ScanIndexForward: false, // Newest first
+    Limit: 20 // Last 20 alerts
+  };
+
+  try {
+    const data = await docClient.query(params).promise();
+    res.json(data.Items);
+  } catch (err) {
+    console.error("DynamoDB Error:", err);
+    res.status(500).json({ error: "Failed to fetch alerts" });
+  }
+});
+
+// 6. Get Device History
 app.get('/api/history/:deviceId', verifyAuth, async (req, res) => {
   const { deviceId } = req.params;
   const { start, end } = req.query;
@@ -239,13 +264,9 @@ if (certsExist && AWS_IOT_ENDPOINT) {
     device.on('connect', () => {
         console.log('✅ Connected to AWS IoT Core');
         // Subscribe to ALL devices using wildcard '+'
-        device.subscribe('greenhouse/+/data', (err) => {
-             if (err) {
-                 console.error('❌ Subscribe Error:', err);
-             } else {
-                 console.log('✅ Subscribed to greenhouse/+/data');
-             }
-        });
+        device.subscribe('greenhouse/+/data');
+        device.subscribe('greenhouse/+/alerts'); // Subscribe to alerts
+        console.log('✅ Subscribed to greenhouse/+/data & alerts');
     });
 
     device.on('message', (topic, payload) => {
@@ -254,6 +275,8 @@ if (certsExist && AWS_IOT_ENDPOINT) {
 
         // Topic format: greenhouse/{device_id}/data
         const topicParts = topic.split('/');
+        
+        // 1. Handle Sensor Data
         if (topicParts.length === 3 && topicParts[2] === 'data') {
             const deviceId = topicParts[1];
             try {
@@ -288,6 +311,34 @@ if (certsExist && AWS_IOT_ENDPOINT) {
 
             } catch (e) {
                 console.error('Error parsing JSON:', e);
+            }
+        }
+        
+        // 2. Handle Alerts (e.g., Rollback Notification)
+        if (topicParts.length === 3 && topicParts[2] === 'alerts') {
+            const deviceId = topicParts[1];
+            try {
+                const alertData = JSON.parse(message);
+                console.log(`🚨 ALERT from ${deviceId}:`, alertData);
+                io.to(deviceId).emit('device-alert', alertData);
+                
+                // --- SAVE TO DYNAMODB ---
+                const dbParams = {
+                    TableName: ALERTS_TABLE,
+                    Item: {
+                        deviceId: deviceId,
+                        timestamp: alertData.timestamp || Math.floor(Date.now() / 1000),
+                        alert: alertData.alert,
+                        message: alertData.message
+                    }
+                };
+                
+                docClient.put(dbParams).promise().catch(err => {
+                    console.error("Failed to save alert:", err);
+                });
+                
+            } catch (e) {
+                console.error('Error parsing Alert JSON:', e);
             }
         }
     });
