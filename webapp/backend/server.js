@@ -149,7 +149,32 @@ app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("DynamoDB Error:", err);
-    res.status(500).json({ error: "Failed to remove device" });
+    res.status(500).json({ error: "Failed to delete device" });
+  }
+});
+
+// 5. Get Device Last Status (for Offline View)
+app.get('/api/devices/:deviceId/status', verifyAuth, async (req, res) => {
+  const { deviceId } = req.params;
+  
+  const params = {
+    TableName: HISTORY_TABLE,
+    KeyConditionExpression: "deviceId = :did",
+    ExpressionAttributeValues: { ":did": deviceId },
+    Limit: 1,
+    ScanIndexForward: false // Get latest
+  };
+
+  try {
+    const data = await docClient.query(params).promise();
+    if (data.Items.length > 0) {
+      res.json(data.Items[0]);
+    } else {
+      res.json({});
+    }
+  } catch (err) {
+    console.error("DynamoDB Error:", err);
+    res.status(500).json({ error: "Failed to fetch status" });
   }
 });
 
@@ -300,7 +325,8 @@ if (certsExist && AWS_IOT_ENDPOINT) {
                         pump: data.pump,
                         fan: data.fan,
                         heater: data.heater,
-                        mode: data.mode
+                        mode: data.mode,
+                        version: data.version // Save Firmware Version
                     }
                 };
                 

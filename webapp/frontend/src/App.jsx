@@ -177,6 +177,48 @@ function Dashboard({ user, signOut }) {
     socket.emit('join-device', id);
   };
 
+  // Fetch latest status when device is selected
+  useEffect(() => {
+    if (deviceId) {
+      fetchDeviceStatus(deviceId);
+      fetchHistory(deviceId); // Also fetch history for graph
+      fetchAlerts(deviceId);
+    }
+  }, [deviceId]);
+
+  const fetchDeviceStatus = async (id) => {
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens.idToken.toString();
+      const url = isLocal
+        ? `https://${window.location.hostname}:3001/api/devices/${id}/status`
+        : `${window.location.origin}/api/devices/${id}/status`;
+
+      const res = await fetch(url, {
+        headers: { Authorization: token }
+      });
+      const data = await res.json();
+      
+      if (data && data.timestamp) {
+         setSensorData(prev => ({ 
+             ...prev, 
+             ...data, 
+             timestamp: data.timestamp * 1000, // Convert to ms
+             version: data.version || 'Unknown' // Set Version
+         }));
+         
+         setDevices({
+             pump: data.pump === 1,
+             fan: data.fan === 1,
+             heater: data.heater === 1
+         });
+         if (data.mode) setMode(data.mode);
+      }
+    } catch (err) {
+      console.error("Failed to fetch device status", err);
+    }
+  };
+
   const fetchHistory = async (id, date = null) => {
     try {
       const session = await fetchAuthSession();
@@ -214,14 +256,16 @@ function Dashboard({ user, signOut }) {
       const isToday = !date || date === new Date().toISOString().split('T')[0];
       if (isToday && data.length > 0) {
         const latest = data[data.length - 1];
-        setSensorData({
+        setSensorData(prev => ({
+          ...prev,
           temp: latest.temp, 
           hum: latest.hum, 
           soil: latest.soil, 
           co2: latest.co2, 
           tank_level: latest.tank_level, 
-          timestamp: latest.timestamp * 1000
-        });
+          timestamp: latest.timestamp * 1000,
+          version: latest.version || prev.version // Preserve version if not in history
+        }));
         setDevices({ 
           pump: latest.pump === 1, 
           fan: latest.fan === 1, 
