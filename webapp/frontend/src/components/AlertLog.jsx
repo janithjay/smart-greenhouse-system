@@ -24,12 +24,12 @@ const AlertLog = ({ alerts, onClose }) => {
                 borderRadius: '5px',
                 borderLeft: `4px solid ${alert.alert === 'ROLLBACK_EXECUTED' ? '#ff4444' : '#4488ff'}`
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                <div className="alert-item-header">
                   <span style={{ fontWeight: 'bold', color: alert.alert === 'ROLLBACK_EXECUTED' ? '#ff4444' : '#4488ff', display: 'flex', alignItems: 'center', gap: '5px' }}>
                     {alert.alert === 'ROLLBACK_EXECUTED' ? <AlertTriangle size={14} /> : <Info size={14} />}
                     {alert.alert}
                   </span>
-                  <span style={{ fontSize: '0.8em', color: '#888' }}>
+                  <span className="alert-timestamp">
                     {new Date(alert.timestamp * 1000).toLocaleString()}
                   </span>
                 </div>

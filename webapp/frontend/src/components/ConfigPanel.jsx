@@ -58,7 +58,7 @@ const ConfigPanel = ({ config, onSave, onUpdateFirmware, currentVersion, onViewL
 
   return (
     <div className="config-panel">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+      <div className="config-header">
         <h3 style={{ margin: 0 }}>Configuration</h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button 
