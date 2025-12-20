@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Brush } from 'recharts';
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -36,6 +36,37 @@ const HistoryGraph = ({ data, onDateChange }) => {
       onDateChange(date);
   };
 
+  const downloadCSV = () => {
+    if (!data || data.length === 0) return;
+    
+    const headers = ['Time', 'Temperature', 'Humidity', 'Soil Moisture', 'Heater', 'Fan', 'Pump', 'Mode'];
+    const csvRows = [headers.join(',')];
+    
+    data.forEach(row => {
+        const values = [
+            row.time,
+            row.temp,
+            row.hum,
+            row.soil,
+            row.heater ? 'ON' : 'OFF',
+            row.fan ? 'ON' : 'OFF',
+            row.pump ? 'ON' : 'OFF',
+            row.mode || 'AUTO'
+        ];
+        csvRows.push(values.join(','));
+    });
+    
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', `greenhouse_data_${selectedDate}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   // Calculate Actuator Activations (0 -> 1 transitions)
   const countActivations = (key) => {
     if (!data || data.length < 2) return 0;
@@ -56,12 +87,26 @@ const HistoryGraph = ({ data, onDateChange }) => {
       <div className="history-header">
         <div className="analytics-controls">
             <h3>Analytics</h3>
-            <input 
-                type="date" 
-                value={selectedDate} 
-                onChange={handleDateChange}
-                className="date-picker"
-            />
+            <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                <input 
+                    type="date" 
+                    value={selectedDate} 
+                    onChange={handleDateChange}
+                    className="date-picker"
+                />
+                <button onClick={downloadCSV} style={{
+                    padding: '8px 12px', 
+                    background: '#4CAF50', 
+                    color: 'white', 
+                    border: 'none', 
+                    borderRadius: '4px', 
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '0.9rem'
+                }}>
+                    Download CSV
+                </button>
+            </div>
         </div>
         <div className="daily-stats">
           <strong>Daily Activations:</strong> 
@@ -81,7 +126,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
                 </div>
             ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data}>
+                <LineChart data={data} syncId="greenhouseGraph">
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                     <XAxis dataKey="time" stroke="#666" tick={{fill: '#666'}} />
                     <YAxis stroke="#666" tick={{fill: '#666'}} />
@@ -90,6 +135,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
                     <Line type="monotone" dataKey="temp" stroke="#ff7300" name="Temp (°C)" dot={false} strokeWidth={2} />
                     <Line type="monotone" dataKey="hum" stroke="#387908" name="Humidity (%)" dot={false} strokeWidth={2} />
                     <Line type="monotone" dataKey="soil" stroke="#0088fe" name="Soil (%)" dot={false} strokeWidth={2} />
+                    <Brush dataKey="time" height={30} stroke="#8884d8" fill="#1a1a1a" />
                 </LineChart>
                 </ResponsiveContainer>
             )}
@@ -105,7 +151,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
                     <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data}>
+                    <AreaChart data={data} syncId="greenhouseGraph">
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                         <XAxis dataKey="time" stroke="#666" tick={false} />
                         <YAxis yAxisId="left" stroke="#666" />
@@ -127,7 +173,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
                     <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data}>
+                    <AreaChart data={data} syncId="greenhouseGraph">
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                         <XAxis dataKey="time" stroke="#666" tick={false} />
                         <YAxis yAxisId="left" stroke="#666" />
@@ -149,7 +195,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
                     <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data}>
+                    <AreaChart data={data} syncId="greenhouseGraph">
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                         <XAxis dataKey="time" stroke="#666" tick={false} />
                         <YAxis yAxisId="left" stroke="#666" />
