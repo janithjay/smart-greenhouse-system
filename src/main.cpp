@@ -22,7 +22,7 @@
 Preferences preferences;
 
 // --- CONFIGURABLE PARAMETERS (Loaded from NVS) ---
-const char *FIRMWARE_VERSION = "1.1-BAD"; // Current Firmware Version
+const char *FIRMWARE_VERSION = "1.0.0"; // Current Firmware Version
 float TEMP_MIN_NIGHT = 20.0;              // Heater ON below this
 float TEMP_MAX_DAY = 30.0;                // Fan ON above this
 float HUM_MAX = 75.0;                     // Fan ON above this
@@ -359,7 +359,7 @@ void IRAM_ATTR isrResetButton()
 void setup()
 {
     Serial.begin(115200);
-    Serial.println("Version 1.0");
+    Serial.println(FIRMWARE_VERSION);
 
     // 0. Generate Unique Device ID
     uint64_t chipid = ESP.getEfuseMac();
@@ -401,7 +401,7 @@ void setup()
         {
             Serial.println("CRITICAL: Too many crashes. Rolling back to previous firmware...");
             preferences.putInt("crash_count", 0); // Reset counter
-            preferences.putBool("rollback_happened", true); // Flag for reporting
+            preferences.putBool("rb_happened", true); // Flag for reporting
             Update.rollBack();
             ESP.restart();
         }
@@ -479,15 +479,7 @@ void setup()
 
     // Initialize Watchdog (30s timeout)
     esp_task_wdt_init(30, true);
-
-    // ... inside setup(), at the very end ...
-
-    Serial.println("Simulating Critical Failure... Rebooting in 3s");
-    delay(3000);
-    ESP.restart(); // <--- INTENTIONAL CRASH
-
-    // 4. Create RTOS Tasks (This will never be reached)
-    // ...
+    
 
     // 4. Create RTOS Tasks
     // Core 1 (Application Logic)
@@ -956,17 +948,19 @@ void TaskConnectivity(void *pvParameters)
                         }
 
                         // --- REPORT ROLLBACK ---
-                        if (preferences.getBool("rollback_happened", false)) {
+                        if (preferences.getBool("rb_happened", false)) {
                             char alertTopic[50];
                             snprintf(alertTopic, sizeof(alertTopic), "greenhouse/%s/alerts", deviceId);
                             
                             char alertMsg[256];
                             snprintf(alertMsg, sizeof(alertMsg), "{\"alert\": \"ROLLBACK_EXECUTED\", \"message\": \"System restored to previous version after 3 crashes.\", \"timestamp\": %lu}", (unsigned long)time(nullptr));
                             
-                            client.publish(alertTopic, alertMsg);
-                            Serial.println("Rollback Alert Published");
-                            
-                            preferences.putBool("rollback_happened", false); // Clear flag
+                            if (client.publish(alertTopic, alertMsg)) {
+                                Serial.println("Rollback Alert Published Successfully");
+                                preferences.putBool("rb_happened", false); // Clear flag only on success
+                            } else {
+                                Serial.println("Rollback Alert Publish FAILED");
+                            }
                         }
                     }
                     else
