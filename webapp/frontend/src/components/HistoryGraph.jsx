@@ -46,21 +46,21 @@ const HistoryGraph = ({ data, onDateChange }) => {
 
   return (
     <div className="history-container">
-      <div className="history-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
-        <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
-            <h3 style={{margin: 0}}>Analytics</h3>
+      <div className="history-header">
+        <div className="analytics-controls">
+            <h3>Analytics</h3>
             <input 
                 type="date" 
                 value={selectedDate} 
                 onChange={handleDateChange}
-                style={{padding: '5px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff'}}
+                className="date-picker"
             />
         </div>
-        <div style={{fontSize: '0.9em', color: '#ccc'}}>
+        <div className="daily-stats">
           <strong>Daily Activations:</strong> 
-          <span style={{marginLeft: '10px', color: '#0088fe'}}>Pump: {pumpCount}</span>
-          <span style={{marginLeft: '10px', color: '#387908'}}>Fan: {fanCount}</span>
-          <span style={{marginLeft: '10px', color: '#ff7300'}}>Heater: {heaterCount}</span>
+          <span className="stat-item pump">Pump: {pumpCount}</span>
+          <span className="stat-item fan">Fan: {fanCount}</span>
+          <span className="stat-item heater">Heater: {heaterCount}</span>
         </div>
       </div>
 
