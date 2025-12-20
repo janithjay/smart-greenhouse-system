@@ -574,16 +574,38 @@ void TaskInterface(void *pvParameters) {
 }
 
 // --- DATA LOGGING HELPER FUNCTIONS ---
-void logDataOffline(const char* jsonString) {
-  File file = LittleFS.open("/offline_log.txt", FILE_APPEND);
-  if (!file) {
-    Serial.println("Failed to open log file");
-    return;
+String ramBuffer = "";
+int ramBufferCount = 0;
+const int RAM_BUFFER_SIZE = 50; // Write to flash every ~4 minutes (50 * 5s)
+
+void flushRamBuffer() {
+  if (ramBufferCount > 0) {
+      File file = LittleFS.open("/offline_log.txt", FILE_APPEND);
+      if (!file) {
+        Serial.println("Failed to open log file for flushing");
+        return;
+      }
+      file.print(ramBuffer);
+      file.close();
+      Serial.println("RAM Buffer Flushed to Flash");
+      
+      ramBuffer = "";
+      ramBufferCount = 0;
+      hasOfflineData = true; 
   }
-  file.println(jsonString);
-  file.close();
-  Serial.println("Data Logged Offline");
-  hasOfflineData = true; // Flag to process later
+}
+
+void logDataOffline(const char* jsonString) {
+  // Buffer in RAM first
+  ramBuffer += String(jsonString) + "\n";
+  ramBufferCount++;
+  
+  Serial.printf("Offline Data Buffered: %d/%d\n", ramBufferCount, RAM_BUFFER_SIZE);
+
+  // Only write to Flash if buffer is full
+  if (ramBufferCount >= RAM_BUFFER_SIZE) {
+      flushRamBuffer();
+  }
 }
 
 void processOfflineData() {
@@ -775,6 +797,9 @@ void TaskConnectivity(void *pvParameters) {
               snprintf(topic, sizeof(topic), "greenhouse/%s/data", deviceId);
               client.publish(topic, jsonBuffer);
               Serial.println("Published Data");
+              
+              // Flush any pending RAM buffer to disk so it can be uploaded
+              if (ramBufferCount > 0) flushRamBuffer();
               
               // Also check for offline data upload here
               processOfflineData(); 
