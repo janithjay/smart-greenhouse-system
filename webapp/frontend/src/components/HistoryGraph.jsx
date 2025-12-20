@@ -89,7 +89,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
         </div>
       </div>
 
-      <div className="detailed-graphs" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
+      <div className="detailed-graphs">
         {/* 2. Temperature & Heater */}
         <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
             <h4>Temperature & Heater</h4>
