@@ -1,5 +1,7 @@
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
-require('dotenv').config();
+const path = require('path');
+// Load .env from parent directory (webapp/backend/.env)
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 // --- Cognito Verifier ---
 const verifier = CognitoJwtVerifier.create({

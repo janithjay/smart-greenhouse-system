@@ -26,6 +26,7 @@ app.use(cors());
 app.use(express.json());
 
 // --- Routes ---
+app.get('/health', (req, res) => res.status(200).send('OK')); // Health Check
 app.use('/api', apiRoutes);
 
 // --- Server Setup (HTTP for Prod, HTTPS for Dev) ---
