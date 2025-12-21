@@ -1,7 +1,5 @@
 const AWS = require('aws-sdk');
-const path = require('path');
-// Load .env from parent directory (webapp/backend/.env)
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+require('dotenv').config();
 
 // Debug: Check if Env Vars are loaded
 if (!process.env.AWS_REGION || !process.env.AWS_ACCESS_KEY_ID) {

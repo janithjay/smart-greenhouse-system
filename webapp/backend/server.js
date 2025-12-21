@@ -6,8 +6,7 @@ const path = require('path');
 const cors = require('cors');
 const { Server } = require('socket.io');
 const dns = require('dns');
-// Load .env from the same directory as server.js
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config();
 
 // Import Modules
 const apiRoutes = require('./routes/api');
