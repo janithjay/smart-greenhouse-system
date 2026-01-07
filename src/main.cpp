@@ -67,7 +67,7 @@ volatile bool pumpStatus = false;
 volatile bool fanStatus = false;
 volatile bool heaterStatus = false;
 volatile bool wifiConnected = false;
-volatile bool awsConnected = false;
+volatile bool mqtttConnected = false;
 volatile bool reconfigureWiFi = false;
 volatile bool portalRunning = false;
 volatile bool stopPortalRequest = false;
@@ -702,11 +702,11 @@ void TaskInterface(void *pvParameters)
                 lcd.setCursor(0, 2);
                 lcd.printf("Soil:%3d%%   Pump:%s", soilMoisture, pumpStatus ? "ON " : "OFF");
 
-                // Line 3: CO2 & AWS Status
+                // Line 3: CO2 & MQTT Status
                 lcd.setCursor(0, 3);
-                if (awsConnected)
+                if (mqttConnected)
                 {
-                    lcd.printf("CO2 :%-4d   AWS :ON ", eco2);
+                    lcd.printf("CO2 :%-4d  MQTT:ON ", eco2);
                 }
                 else if (wifiConnected)
                 {
@@ -877,12 +877,12 @@ void TaskConnectivity(void *pvParameters)
     }
     portalRunning = false;
 
-    // Load AWS Certificates
-    net.setCACert(AWS_CERT_CA);
-    net.setCertificate(AWS_CERT_CRT);
-    net.setPrivateKey(AWS_CERT_PRIVATE);
+    // Load HiveMQ Certificates (Root CA Only)
+    net.setCACert(ROOT_CA);
+    // net.setCertificate(AWS_CERT_CRT); // Not needed for HiveMQ Password Auth
+    // net.setPrivateKey(AWS_CERT_PRIVATE); // Not needed for HiveMQ Password Auth
 
-    client.setServer(AWS_IOT_ENDPOINT, 8883);
+    client.setServer(MQTT_BROKER, MQTT_PORT);
     client.setCallback(messageHandler);
 
     esp_task_wdt_add(NULL); // Add to WDT
@@ -925,20 +925,21 @@ void TaskConnectivity(void *pvParameters)
 
             if (!client.connected())
             {
-                awsConnected = false;
+                mqttConnected = false;
                 // Only try to connect to AWS occasionally to avoid spamming logs/blocking
-                static unsigned long lastAwsAttempt = 0;
-                if (millis() - lastAwsAttempt > 5000)
+                static unsigned long lastMqttAttempt = 0;
+                if (millis() - lastMqttAttempt > 5000)
                 {
-                    lastAwsAttempt = millis();
-                    Serial.print("AWS Connecting...");
-                    if (client.connect(deviceId))
+                    lastMqttAttempt = millis();
+                    Serial.printf("HiveMQ Connecting (User: %s)...", MQTT_USER);
+                    // Connect with User/Pass
+                    if (client.connect(deviceId, MQTT_USER, MQTT_PASSWORD))
                     {
                         Serial.println("CONNECTED");
                         char topic[50];
                         snprintf(topic, sizeof(topic), "greenhouse/%s/commands", deviceId);
                         client.subscribe(topic);
-                        awsConnected = true;
+                        mqttConnected = true;
 
                         // FIX: Mark boot as successful (reset crash count)
                         if (preferences.getInt("crash_count", 0) > 0)
@@ -972,7 +973,7 @@ void TaskConnectivity(void *pvParameters)
             }
             else
             {
-                awsConnected = true;
+                mqttConnected = true;
                 client.loop();
             }
         }
@@ -982,7 +983,7 @@ void TaskConnectivity(void *pvParameters)
             if (!portalRunning)
             {
                 wifiConnected = false;
-                awsConnected = false;
+                mqttConnected = false;
 
                 // --- SELF-HEALING: Auto-Reconnect Strategy ---
                 // If the router was off during boot (Power Cut), the ESP32 enters Offline Mode.
@@ -1011,7 +1012,7 @@ void TaskConnectivity(void *pvParameters)
                      pumpStatus ? 1 : 0, fanStatus ? 1 : 0, heaterStatus ? 1 : 0,
                      manualMode ? "MANUAL" : "AUTO");
 
-            if (wifiConnected && awsConnected)
+            if (wifiConnected && mqttConnected)
             {
                 char topic[50];
                 snprintf(topic, sizeof(topic), "greenhouse/%s/data", deviceId);

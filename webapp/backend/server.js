@@ -2,9 +2,8 @@ const express = require('express');
 const https = require('https');
 const fs = require('fs');
 const { Server } = require('socket.io');
-const awsIot = require('aws-iot-device-sdk');
-const AWS = require('aws-sdk');
-const { CognitoJwtVerifier } = require("aws-jwt-verify");
+const mqtt = require('mqtt');
+const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const dns = require('dns');
@@ -17,69 +16,74 @@ if (dns.setDefaultResultOrder) {
 
 // --- Configuration ---
 const PORT = process.env.PORT || 3001;
-const AWS_IOT_ENDPOINT = process.env.AWS_IOT_ENDPOINT;
-const DEVICE_NAME = 'GreenHouse_Hub'; // Name for this backend connection
+const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL;
+const MQTT_USERNAME = process.env.MQTT_USERNAME;
+const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
+const MONGODB_URI = process.env.MONGODB_URI;
 
-// --- AWS SDK Setup (DynamoDB) ---
-AWS.config.update({
-  region: process.env.AWS_REGION,
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+// --- MongoDB Setup ---
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch(err => console.error("❌ MongoDB Connection Error:", err));
+
+// --- Schemas ---
+const DeviceSchema = new mongoose.Schema({
+  userId: String,
+  deviceId: String,
+  name: String,
+  createdAt: { type: Date, default: Date.now }
 });
-const docClient = new AWS.DynamoDB.DocumentClient();
-const TABLE_NAME = "GreenhouseUserDevices";
-const HISTORY_TABLE = "GreenhouseSensorData";
-const ALERTS_TABLE = "GreenhouseAlerts";
+const Device = mongoose.model('Device', DeviceSchema);
 
-// --- Cognito Verifier ---
-const verifier = CognitoJwtVerifier.create({
-  userPoolId: process.env.COGNITO_USER_POOL_ID,
-  tokenUse: "id",
-  clientId: process.env.COGNITO_CLIENT_ID,
-  httpOptions: {
-    responseTimeout: 10000 // Wait 10 seconds instead of 3
-  }
+const HistorySchema = new mongoose.Schema({
+  deviceId: String,
+  timestamp: Number,
+  temp: Number,
+  hum: Number,
+  soil: Number,
+  co2: Number,
+  tank_level: Number,
+  pump: Number,
+  fan: Number,
+  heater: Number,
+  mode: String,
+  version: String
 });
+const History = mongoose.model('History', HistorySchema);
 
-// Warm up the verifier (fetch JWKS) at startup
-verifier.hydrate()
-  .then(() => console.log("✅ Cognito JWKS loaded successfully"))
-  .catch(err => console.error("❌ Failed to load Cognito JWKS (Check Internet/VPN):", err.message));
+const AlertSchema = new mongoose.Schema({
+  deviceId: String,
+  timestamp: Number,
+  alert: String,
+  message: String
+});
+const Alert = mongoose.model('Alert', AlertSchema);
 
 // --- Express & Socket.io Setup ---
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- Middleware: Verify Cognito Token ---
+// --- Middleware: Simple Auth (Placeholder) ---
+// Since we removed Cognito, we'll use a simple pass-through or a basic token check for now.
+// For production with free tier, consider Firebase Auth later.
 const verifyAuth = async (req, res, next) => {
-  const token = req.headers.authorization;
-  if (!token) return res.status(401).json({ error: "No token provided" });
-  try {
-    const payload = await verifier.verify(token);
-    req.user = { id: payload.sub, email: payload.email };
-    next();
-  } catch (err) {
-    console.error("Token verification failed:", err);
-    return res.status(401).json({ error: "Invalid token" });
-  }
+  // TODO: Implement replacement Auth (e.g. Firebase)
+  // For now, we assume a header "x-user-id" is sent from frontend for testing
+  const userId = req.headers['x-user-id'] || "test-user";
+  req.user = { id: userId };
+  next();
 };
 
 // --- API Endpoints ---
 
 // 1. Get User's Devices
 app.get('/api/devices', verifyAuth, async (req, res) => {
-  const params = {
-    TableName: TABLE_NAME,
-    KeyConditionExpression: "userId = :uid",
-    ExpressionAttributeValues: { ":uid": req.user.id }
-  };
-
   try {
-    const data = await docClient.query(params).promise();
-    res.json(data.Items);
+    const devices = await Device.find({ userId: req.user.id });
+    res.json(devices);
   } catch (err) {
-    console.error("DynamoDB Error:", err);
+    console.error("MongoDB Error:", err);
     res.status(500).json({ error: "Failed to fetch devices" });
   }
 });
@@ -89,21 +93,15 @@ app.post('/api/devices', verifyAuth, async (req, res) => {
   const { deviceId, name } = req.body;
   if (!deviceId) return res.status(400).json({ error: "Device ID required" });
 
-  const params = {
-    TableName: TABLE_NAME,
-    Item: {
-      userId: req.user.id,
-      deviceId: deviceId,
-      name: name || deviceId,
-      createdAt: Date.now()
-    }
-  };
-
   try {
-    await docClient.put(params).promise();
-    res.json({ success: true, device: params.Item });
+    const newDevice = await Device.findOneAndUpdate(
+      { userId: req.user.id, deviceId: deviceId },
+      { name: name || deviceId, createdAt: Date.now() },
+      { upsert: true, new: true }
+    );
+    res.json({ success: true, device: newDevice });
   } catch (err) {
-    console.error("DynamoDB Error:", err);
+    console.error("MongoDB Error:", err);
     res.status(500).json({ error: "Failed to add device" });
   }
 });
@@ -113,42 +111,25 @@ app.put('/api/devices/:deviceId', verifyAuth, async (req, res) => {
   const { deviceId } = req.params;
   const { name } = req.body;
 
-  const params = {
-    TableName: TABLE_NAME,
-    Key: {
-      userId: req.user.id,
-      deviceId: deviceId
-    },
-    UpdateExpression: "set #n = :n",
-    ExpressionAttributeNames: { "#n": "name" },
-    ExpressionAttributeValues: { ":n": name },
-    ReturnValues: "UPDATED_NEW"
-  };
-
   try {
-    await docClient.update(params).promise();
+    await Device.updateOne(
+      { userId: req.user.id, deviceId: deviceId },
+      { name: name }
+    );
     res.json({ success: true });
   } catch (err) {
-    console.error("DynamoDB Error:", err);
+    console.error("MongoDB Error:", err);
     res.status(500).json({ error: "Failed to update device" });
   }
 });
 
 // 4. Remove Device
 app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
-  const params = {
-    TableName: TABLE_NAME,
-    Key: {
-      userId: req.user.id,
-      deviceId: req.params.deviceId
-    }
-  };
-
   try {
-    await docClient.delete(params).promise();
+    await Device.deleteOne({ userId: req.user.id, deviceId: req.params.deviceId });
     res.json({ success: true });
   } catch (err) {
-    console.error("DynamoDB Error:", err);
+    console.error("MongoDB Error:", err);
     res.status(500).json({ error: "Failed to delete device" });
   }
 });
@@ -157,23 +138,11 @@ app.delete('/api/devices/:deviceId', verifyAuth, async (req, res) => {
 app.get('/api/devices/:deviceId/status', verifyAuth, async (req, res) => {
   const { deviceId } = req.params;
   
-  const params = {
-    TableName: HISTORY_TABLE,
-    KeyConditionExpression: "deviceId = :did",
-    ExpressionAttributeValues: { ":did": deviceId },
-    Limit: 1,
-    ScanIndexForward: false // Get latest
-  };
-
   try {
-    const data = await docClient.query(params).promise();
-    if (data.Items.length > 0) {
-      res.json(data.Items[0]);
-    } else {
-      res.json({});
-    }
+    const lastStatus = await History.findOne({ deviceId: deviceId }).sort({ timestamp: -1 });
+    res.json(lastStatus || {});
   } catch (err) {
-    console.error("DynamoDB Error:", err);
+    console.error("MongoDB Error:", err);
     res.status(500).json({ error: "Failed to fetch status" });
   }
 });
@@ -182,22 +151,11 @@ app.get('/api/devices/:deviceId/status', verifyAuth, async (req, res) => {
 app.get('/api/alerts/:deviceId', verifyAuth, async (req, res) => {
   const { deviceId } = req.params;
   
-  // Verify user owns this device (Basic check)
-  // In production, you should query GreenhouseUserDevices to ensure ownership
-  
-  const params = {
-    TableName: ALERTS_TABLE,
-    KeyConditionExpression: "deviceId = :did",
-    ExpressionAttributeValues: { ":did": deviceId },
-    ScanIndexForward: false, // Newest first
-    Limit: 20 // Last 20 alerts
-  };
-
   try {
-    const data = await docClient.query(params).promise();
-    res.json(data.Items);
+    const alerts = await Alert.find({ deviceId: deviceId }).sort({ timestamp: -1 }).limit(20);
+    res.json(alerts);
   } catch (err) {
-    console.error("DynamoDB Error:", err);
+    console.error("MongoDB Error:", err);
     res.status(500).json({ error: "Failed to fetch alerts" });
   }
 });
@@ -214,23 +172,14 @@ app.get('/api/history/:deviceId', verifyAuth, async (req, res) => {
   if (start) startTime = parseInt(start);
   if (end) endTime = parseInt(end);
 
-  const params = {
-    TableName: HISTORY_TABLE,
-    KeyConditionExpression: "deviceId = :did AND #ts BETWEEN :start AND :end",
-    ExpressionAttributeNames: { "#ts": "timestamp" },
-    ExpressionAttributeValues: {
-      ":did": deviceId,
-      ":start": startTime,
-      ":end": endTime
-    },
-    ScanIndexForward: true // Return oldest to newest (for graph)
-  };
-
   try {
-    const data = await docClient.query(params).promise();
-    res.json(data.Items);
+    const history = await History.find({
+      deviceId: deviceId,
+      timestamp: { $gte: startTime, $lte: endTime }
+    }).sort({ timestamp: 1 });
+    res.json(history);
   } catch (err) {
-    console.error("DynamoDB History Error:", err);
+    console.error("MongoDB History Error:", err);
     res.status(500).json({ error: "Failed to fetch history" });
   }
 });
@@ -258,122 +207,92 @@ const io = new Server(server, {
   }
 });
 
-// --- AWS IoT Setup ---
-// We expect certificates to be in a 'certs' folder
-// Check if certs exist before trying to connect
-// const fs = require('fs'); // Already imported
-const certsExist = fs.existsSync(path.join(__dirname, 'certs', 'private.pem.key')) &&
-                   fs.existsSync(path.join(__dirname, 'certs', 'certificate.pem.crt')) &&
-                   fs.existsSync(path.join(__dirname, 'certs', 'AmazonRootCA1.pem'));
+// --- MQTT Setup (HiveMQ) ---
+let mqttClient;
 
-// --- State ---
-let lastSensorData = {
-    temp: 0, hum: 0, soil: 0, co2: 0, tank_level: 0, 
-    pump: 0, fan: 0, heater: 0, mode: 'AUTO', timestamp: Date.now()
-};
-let deviceOnline = false;
-let lastHeartbeat = 0;
+if (MQTT_BROKER_URL) {
+  const mqttOptions = {
+    username: MQTT_USERNAME,
+    password: MQTT_PASSWORD,
+    protocol: 'mqtts', // Secure MQTT
+    port: 8883,
+    rejectUnauthorized: false // Allow self-signed certs (or HiveMQ's public certs)
+  };
 
-let device;
+  mqttClient = mqtt.connect(MQTT_BROKER_URL, mqttOptions);
 
-if (certsExist && AWS_IOT_ENDPOINT) {
-    device = awsIot.device({
-        keyPath: path.join(__dirname, 'certs', 'private.pem.key'),
-        certPath: path.join(__dirname, 'certs', 'certificate.pem.crt'),
-        caPath: path.join(__dirname, 'certs', 'AmazonRootCA1.pem'),
-        clientId: DEVICE_NAME,
-        host: AWS_IOT_ENDPOINT
-    });
+  mqttClient.on('connect', () => {
+    console.log('✅ Connected to HiveMQ Broker');
+    // Subscribe to ALL devices
+    mqttClient.subscribe('greenhouse/+/data');
+    mqttClient.subscribe('greenhouse/+/alerts');
+    console.log('✅ Subscribed to greenhouse/+/data & alerts');
+  });
 
-    // --- AWS IoT Events ---
-    device.on('connect', () => {
-        console.log('✅ Connected to AWS IoT Core');
-        // Subscribe to ALL devices using wildcard '+'
-        device.subscribe('greenhouse/+/data');
-        device.subscribe('greenhouse/+/alerts'); // Subscribe to alerts
-        console.log('✅ Subscribed to greenhouse/+/data & alerts');
-    });
+  mqttClient.on('message', async (topic, payload) => {
+    const message = payload.toString();
+    const topicParts = topic.split('/');
 
-    device.on('message', (topic, payload) => {
-        const message = payload.toString();
-        // console.log('Message received:', topic, message);
+    // 1. Handle Sensor Data
+    if (topicParts.length === 3 && topicParts[2] === 'data') {
+      const deviceId = topicParts[1];
+      try {
+        const data = JSON.parse(message);
 
-        // Topic format: greenhouse/{device_id}/data
-        const topicParts = topic.split('/');
-        
-        // 1. Handle Sensor Data
-        if (topicParts.length === 3 && topicParts[2] === 'data') {
-            const deviceId = topicParts[1];
-            try {
-                const data = JSON.parse(message);
-                
-                // Broadcast ONLY to clients listening to this device
-                io.to(deviceId).emit('sensor-data', data);
-                io.to(deviceId).emit('device-status', { online: true });
-                
-                // --- SAVE TO DYNAMODB ---
-                const dbParams = {
-                    TableName: HISTORY_TABLE,
-                    Item: {
-                        deviceId: deviceId,
-                        timestamp: data.timestamp || Math.floor(Date.now() / 1000),
-                        temp: data.temp,
-                        hum: data.hum,
-                        soil: data.soil,
-                        co2: data.co2,
-                        tank_level: data.tank_level,
-                        pump: data.pump,
-                        fan: data.fan,
-                        heater: data.heater,
-                        mode: data.mode,
-                        version: data.version // Save Firmware Version
-                    }
-                };
-                
-                // Fire and forget (don't await to keep socket fast)
-                docClient.put(dbParams).promise().catch(err => {
-                    console.error("Failed to save history:", err);
-                });
+        // Broadcast to frontend
+        io.to(deviceId).emit('sensor-data', data);
+        io.to(deviceId).emit('device-status', { online: true });
 
-            } catch (e) {
-                console.error('Error parsing JSON:', e);
-            }
-        }
-        
-        // 2. Handle Alerts (e.g., Rollback Notification)
-        if (topicParts.length === 3 && topicParts[2] === 'alerts') {
-            const deviceId = topicParts[1];
-            try {
-                const alertData = JSON.parse(message);
-                console.log(`🚨 ALERT from ${deviceId}:`, alertData);
-                io.to(deviceId).emit('device-alert', alertData);
-                
-                // --- SAVE TO DYNAMODB ---
-                const dbParams = {
-                    TableName: ALERTS_TABLE,
-                    Item: {
-                        deviceId: deviceId,
-                        timestamp: alertData.timestamp || Math.floor(Date.now() / 1000),
-                        alert: alertData.alert,
-                        message: alertData.message
-                    }
-                };
-                
-                docClient.put(dbParams).promise().catch(err => {
-                    console.error("Failed to save alert:", err);
-                });
-                
-            } catch (e) {
-                console.error('Error parsing Alert JSON:', e);
-            }
-        }
-    });
+        // Save to MongoDB
+        const newHistory = new History({
+          deviceId: deviceId,
+          timestamp: data.timestamp || Math.floor(Date.now() / 1000),
+          temp: data.temp,
+          hum: data.hum,
+          soil: data.soil,
+          co2: data.co2,
+          tank_level: data.tank_level,
+          pump: data.pump,
+          fan: data.fan,
+          heater: data.heater,
+          mode: data.mode,
+          version: data.version
+        });
+        await newHistory.save();
 
-    device.on('error', (error) => {
-        console.error('❌ AWS IoT Error:', error);
-    });
+      } catch (e) {
+        console.error('Error parsing JSON:', e);
+      }
+    }
+
+    // 2. Handle Alerts
+    if (topicParts.length === 3 && topicParts[2] === 'alerts') {
+      const deviceId = topicParts[1];
+      try {
+        const alertData = JSON.parse(message);
+        console.log(`🚨 ALERT from ${deviceId}:`, alertData);
+        io.to(deviceId).emit('device-alert', alertData);
+
+        // Save to MongoDB
+        const newAlert = new Alert({
+          deviceId: deviceId,
+          timestamp: alertData.timestamp || Math.floor(Date.now() / 1000),
+          alert: alertData.alert,
+          message: alertData.message
+        });
+        await newAlert.save();
+
+      } catch (e) {
+        console.error('Error parsing Alert JSON:', e);
+      }
+    }
+  });
+
+  mqttClient.on('error', (error) => {
+    console.error('❌ MQTT Error:', error);
+  });
 } else {
-    console.log('⚠️ AWS IoT Certificates or Endpoint missing. Running in Simulation Mode.');
+  console.log('⚠️ MQTT Credentials missing. Running in Simulation Mode.');
 }
 
 // --- Heartbeat Monitor ---
@@ -403,10 +322,10 @@ io.on('connection', (socket) => {
     if (!socket.deviceId) return; // Ignore if not logged in
     console.log(`Command for ${socket.deviceId}:`, command);
     
-    if (device) {
+    if (mqttClient) {
         // Publish to specific device topic
         const topic = `greenhouse/${socket.deviceId}/commands`;
-        device.publish(topic, JSON.stringify(command));
+        mqttClient.publish(topic, JSON.stringify(command));
     }
   });
 
@@ -432,9 +351,9 @@ io.on('connection', (socket) => {
         return; // Do not send to device
     }
 
-    if (device) {
+    if (mqttClient) {
         const topic = `greenhouse/${socket.deviceId}/commands`;
-        device.publish(topic, JSON.stringify(config));
+        mqttClient.publish(topic, JSON.stringify(config));
     }
   });
 

@@ -1,36 +1,51 @@
 import React, { useState, useEffect } from 'react';
-import { Thermometer, Droplets, Wind, Activity, Waves, Plus, Trash2, Edit } from 'lucide-react';
+import { Thermometer, Droplets, Wind, Activity, Waves, Plus, Trash2, Edit, LogOut } from 'lucide-react';
 import io from 'socket.io-client';
-import { Authenticator, useAuthenticator, View, Button, Heading } from '@aws-amplify/ui-react';
-import '@aws-amplify/ui-react/styles.css';
-import { fetchAuthSession, signInWithRedirect } from 'aws-amplify/auth';
 import SensorCard from './components/SensorCard';
 import ControlPanel from './components/ControlPanel';
 import ConfigPanel from './components/ConfigPanel';
 import HistoryGraph from './components/HistoryGraph';
 import AlertLog from './components/AlertLog';
 import './App.css';
-import './AuthStyles.css';
-import { signOut as amplifySignOut } from 'aws-amplify/auth';
 
+// --- Configuration ---
+// In Development: Connect to Localhost:3001
+// In Production (Vercel): Connect to Render Backend URL
+// We use an Environment Variable for the Render URL
+const RENDER_URL = import.meta.env.VITE_BACKEND_URL || "https://your-app-name.onrender.com"; 
 
-// Connect to Backend
-// In Production (Amplify), we use Rewrites to proxy requests to EC2, so we connect to the same origin.
-// In Development (Localhost), we connect directly to port 3001.
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname.match(/^192\.168\./) || window.location.hostname.match(/^127\./);
+
 const BACKEND_URL = isLocal
-  ? `https://${window.location.hostname}:3001`
-  : window.location.origin;
+  ? `http://${window.location.hostname}:3001` // Note: Using HTTP for local dev now
+  : RENDER_URL;
 
 const socket = io(BACKEND_URL, {
-  rejectUnauthorized: false, // Allow self-signed certs in dev
-  path: '/socket.io' // Standard Socket.io path
+  rejectUnauthorized: false, 
+  path: '/socket.io' 
 });
+
+// Simple User ID for Simulation
+const USER_ID = "default-user";
+
+function App() {
+  const [user, setUser] = useState({ id: USER_ID, username: "Greenhouse Admin" });
+
+  const signOut = () => {
+    // For now, reload or clear state
+    window.location.reload();
+  };
+
+  return (
+    <Dashboard user={user} signOut={signOut} />
+  );
+}
 
 function Dashboard({ user, signOut }) {
   // --- State ---
   const [deviceId, setDeviceId] = useState('');
   const [userDevices, setUserDevices] = useState([]);
+
   const [view, setView] = useState('list'); // 'list' or 'dashboard'
 
   const [sensorData, setSensorData] = useState({
@@ -55,49 +70,23 @@ function Dashboard({ user, signOut }) {
     fetchDevices();
   }, []);
 
-  // --- Session Timeout Check (24 Hours) ---
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const session = await fetchAuthSession();
-        if (!session.tokens?.idToken?.payload?.auth_time) return;
-
-        const authTime = session.tokens.idToken.payload.auth_time;
-        const now = Math.floor(Date.now() / 1000);
-        const elapsed = now - authTime;
-        const limit = 24 * 60 * 60; // 24 hours in seconds
-
-        if (elapsed >= limit) {
-          console.log("Session expired (24h limit). Signing out.");
-          await signOut();
-          window.location.reload();
-        }
-      } catch (err) {
-        console.error("Session check failed", err);
-      }
-    };
-
-    // Check immediately and every minute
-    checkSession();
-    const interval = setInterval(checkSession, 60000);
-    return () => clearInterval(interval);
-  }, [signOut]);
+  // --- Session Timeout Check (Disabled for Free Tier) ---
+  // useEffect(() => { ... }); 
 
   const fetchDevices = async () => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices`
-        : `${window.location.origin}/api/devices`;
+      const url = `${BACKEND_URL}/api/devices`;
 
       const res = await fetch(url, {
-        headers: { Authorization: token }
+        headers: { "x-user-id": USER_ID }
       });
       const data = await res.json();
       setUserDevices(data);
     } catch (err) {
       console.error("Failed to fetch devices", err);
+    }
+  };
+
     }
   };
 
@@ -108,15 +97,11 @@ function Dashboard({ user, signOut }) {
     if (!id) return;
 
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices`
-        : `${window.location.origin}/api/devices`;
+      const url = `${BACKEND_URL}/api/devices`;
 
       await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: token },
+        headers: { 'Content-Type': 'application/json', "x-user-id": USER_ID },
         body: JSON.stringify({ deviceId: id, name })
       });
       fetchDevices();
@@ -129,15 +114,11 @@ function Dashboard({ user, signOut }) {
   const removeDevice = async (id) => {
     if (!confirm("Are you sure?")) return;
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices/${id}`
-        : `${window.location.origin}/api/devices/${id}`;
+      const url = `${BACKEND_URL}/api/devices/${id}`;
 
       await fetch(url, {
         method: 'DELETE',
-        headers: { Authorization: token }
+        headers: { "x-user-id": USER_ID }
       });
       fetchDevices();
       if (deviceId === id) {
@@ -154,15 +135,11 @@ function Dashboard({ user, signOut }) {
     if (!newName || newName === currentName) return;
 
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices/${id}`
-        : `${window.location.origin}/api/devices/${id}`;
+      const url = `${BACKEND_URL}/api/devices/${id}`;
 
       await fetch(url, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: token },
+        headers: { 'Content-Type': 'application/json', "x-user-id": USER_ID },
         body: JSON.stringify({ name: newName })
       });
       fetchDevices();
@@ -188,14 +165,10 @@ function Dashboard({ user, signOut }) {
 
   const fetchDeviceStatus = async (id) => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices/${id}/status`
-        : `${window.location.origin}/api/devices/${id}/status`;
+      const url = `${BACKEND_URL}/api/devices/${id}/status`;
 
       const res = await fetch(url, {
-        headers: { Authorization: token }
+        headers: { "x-user-id": USER_ID }
       });
       const data = await res.json();
       
@@ -221,11 +194,7 @@ function Dashboard({ user, signOut }) {
 
   const fetchHistory = async (id, date = null) => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      let url = isLocal
-        ? `https://${window.location.hostname}:3001/api/history/${id}`
-        : `${window.location.origin}/api/history/${id}`;
+      let url = `${BACKEND_URL}/api/history/${id}`;
 
       if (date) {
           const start = Math.floor(new Date(date).setHours(0,0,0,0) / 1000);
@@ -234,7 +203,7 @@ function Dashboard({ user, signOut }) {
       }
 
       const res = await fetch(url, {
-        headers: { Authorization: token }
+        headers: { "x-user-id": USER_ID }
       });
       const data = await res.json();
       
@@ -281,14 +250,10 @@ function Dashboard({ user, signOut }) {
 
   const fetchAlerts = async (id) => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/alerts/${id}`
-        : `${window.location.origin}/api/alerts/${id}`;
+      const url = `${BACKEND_URL}/api/alerts/${id}`;
 
       const res = await fetch(url, {
-        headers: { Authorization: token }
+        headers: { "x-user-id": USER_ID }
       });
       const data = await res.json();
       setAlerts(data);
