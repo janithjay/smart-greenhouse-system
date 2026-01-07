@@ -26,3 +26,4 @@ Thumbs.db
 deploy-ec2.sh
 nginx.conf
 /node_modules
+DEPLOYMENT_INSTRUCTIONS.md
