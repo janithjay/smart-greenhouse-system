@@ -75,6 +75,19 @@ const verifyAuth = async (req, res, next) => {
 };
 
 // --- API Endpoints ---
+app.get('/', (req, res) => {
+    res.json({ 
+        status: "Online", 
+        service: "Smart Greenhouse Backend", 
+        version: "1.0.0",
+        endpoints: [
+            "/api/devices",
+            "/api/history/:deviceId",
+            "/api/alerts/:deviceId",
+            "/api/ingest"
+        ]
+    });
+});
 
 // 1. Get User's Devices
 app.get('/api/devices', verifyAuth, async (req, res) => {
