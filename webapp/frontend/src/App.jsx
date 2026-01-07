@@ -10,12 +10,12 @@ import './App.css';
 
 // --- Configuration ---
 // 1. Backend API (Vercel) for History/Devices
-const API_URL = import.meta.env.VITE_BACKEND_URL || "https://your-vercel-backend.vercel.app"; 
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 // 2. MQTT Broker (HiveMQ) for Real-Time Data
-const MQTT_BROKER = "wss://xxxxxxxx.s1.eu.hivemq.cloud:8884/mqtt"; // Must be WSS (Secure WebSocket)
-const MQTT_USER = "esp32_user";
-const MQTT_PASS = "password123";
+const MQTT_BROKER = import.meta.env.VITE_MQTT_BROKER;
+const MQTT_USER = import.meta.env.VITE_MQTT_USER;
+const MQTT_PASS = import.meta.env.VITE_MQTT_PASSWORD;
 
 // Simple User ID for Simulation
 const USER_ID = "default-user";
@@ -467,38 +467,6 @@ function Dashboard({ user, signOut }) {
       </main>
 
       {showAlerts && <AlertLog alerts={alerts} onClose={() => setShowAlerts(false)} />}
-    </div>
-  );
-}
-
-function App() {
-  return (
-    <div className="auth-wrapper">
-      <Authenticator>
-        {({ signOut, user }) => (
-          <Dashboard
-            user={user}
-            signOut={async () => {
-              const domain = import.meta.env.VITE_COGNITO_DOMAIN;
-              const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
-              const logoutUri = window.location.origin + '/';
-
-              // 1️⃣ Fully clear Cognito + federated IdP state
-              try {
-                await amplifySignOut({ global: true });
-              } catch (error) {
-                console.warn("Amplify signOut failed (ignoring):", error);
-              }
-
-              // 2️⃣ Hard redirect through Hosted UI logout
-              window.location.href =
-                `https://${domain}/logout` +
-                `?client_id=${clientId}` +
-                `&logout_uri=${encodeURIComponent(logoutUri)}`;
-            }}
-          />
-        )}
-      </Authenticator>
     </div>
   );
 }
