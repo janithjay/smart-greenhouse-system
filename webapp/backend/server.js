@@ -1,30 +1,31 @@
 const express = require('express');
-const https = require('https');
-const fs = require('fs');
-const { Server } = require('socket.io');
-const mqtt = require('mqtt');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const path = require('path');
-const dns = require('dns');
 require('dotenv').config();
 
-// Fix for Node.js 17+ IPv6 issues
-if (dns.setDefaultResultOrder) {
-  dns.setDefaultResultOrder('ipv4first');
-}
-
 // --- Configuration ---
-const PORT = process.env.PORT || 3001;
-const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL;
-const MQTT_USERNAME = process.env.MQTT_USERNAME;
-const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
 const MONGODB_URI = process.env.MONGODB_URI;
 
 // --- MongoDB Setup ---
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch(err => console.error("❌ MongoDB Connection Error:", err));
+// Cache connection for Vercel hot-starts
+let isConnected = false;
+const connectDB = async () => {
+    if (isConnected) return;
+    try {
+        await mongoose.connect(MONGODB_URI);
+        isConnected = true;
+        console.log("✅ Connected to MongoDB");
+    } catch (err) {
+        console.error("❌ MongoDB Connection Error:", err);
+    }
+};
+
+// Ensure connection on every request
+const app = express();
+app.use(async (req, res, next) => {
+    await connectDB();
+    next();
+});
 
 // --- Schemas ---
 const DeviceSchema = new mongoose.Schema({
@@ -59,8 +60,6 @@ const AlertSchema = new mongoose.Schema({
 });
 const Alert = mongoose.model('Alert', AlertSchema);
 
-// --- Express & Socket.io Setup ---
-const app = express();
 app.use(cors());
 app.use(express.json());
 
@@ -184,185 +183,62 @@ app.get('/api/history/:deviceId', verifyAuth, async (req, res) => {
   }
 });
 
-// --- Server Setup (HTTP for Prod, HTTPS for Dev) ---
-let server;
-if (process.env.NODE_ENV === 'production') {
-  const http = require('http');
-  server = http.createServer(app);
-  console.log('🚀 Running in PRODUCTION mode (HTTP)');
-} else {
-  // Load Self-Signed Certs for HTTPS (Local Development)
-  const sslOptions = {
-    key: fs.readFileSync(path.join(__dirname, 'certs', 'key.pem')),
-    cert: fs.readFileSync(path.join(__dirname, 'certs', 'cert.pem'))
-  };
-  server = https.createServer(sslOptions, app);
-  console.log('🚀 Running in DEVELOPMENT mode (HTTPS)');
+// --- Server Setup (Serverless) ---
+// For Vercel, we export the app. No need to create HTTP/Socket.io servers.
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+      console.log(`Server running locally on port ${PORT}`);
+  });
 }
 
-const io = new Server(server, {
-  cors: {
-    origin: "*", // Allow all origins for now (or specify frontend URL)
-    methods: ["GET", "POST"]
+
+
+
+// 7. Ingest Sensor Data (Called by ESP32/IoT Device via HTTP)
+app.post('/api/ingest', async (req, res) => {
+  const { deviceId, data } = req.body;
+  
+  if (!deviceId || !data) {
+     return res.status(400).json({ error: "Missing deviceId or data" });
+  }
+
+  try {
+     // Save History
+     if (data.temp !== undefined) {
+         const newHistory = new History({
+            deviceId: deviceId,
+            timestamp: data.timestamp || Math.floor(Date.now() / 1000),
+            temp: data.temp,
+            hum: data.hum,
+            soil: data.soil,
+            co2: data.co2,
+            tank_level: data.tank_level,
+            pump: data.pump,
+            fan: data.fan,
+            heater: data.heater,
+            mode: data.mode,
+            version: data.version
+         });
+         await newHistory.save();
+     }
+
+     // Save Alerts
+     if (data.alert) {
+         const newAlert = new Alert({
+            deviceId: deviceId,
+            timestamp: data.timestamp || Math.floor(Date.now() / 1000),
+            alert: data.alert,
+            message: data.message
+         });
+         await newAlert.save();
+     }
+     
+     res.json({ success: true });
+  } catch (err) {
+     console.error("Ingest Error:", err);
+     res.status(500).json({ error: "Failed to ingest data" });
   }
 });
 
-// --- MQTT Setup (HiveMQ) ---
-let mqttClient;
-
-if (MQTT_BROKER_URL) {
-  const mqttOptions = {
-    username: MQTT_USERNAME,
-    password: MQTT_PASSWORD,
-    protocol: 'mqtts', // Secure MQTT
-    port: 8883,
-    rejectUnauthorized: false // Allow self-signed certs (or HiveMQ's public certs)
-  };
-
-  mqttClient = mqtt.connect(MQTT_BROKER_URL, mqttOptions);
-
-  mqttClient.on('connect', () => {
-    console.log('✅ Connected to HiveMQ Broker');
-    // Subscribe to ALL devices
-    mqttClient.subscribe('greenhouse/+/data');
-    mqttClient.subscribe('greenhouse/+/alerts');
-    console.log('✅ Subscribed to greenhouse/+/data & alerts');
-  });
-
-  mqttClient.on('message', async (topic, payload) => {
-    const message = payload.toString();
-    const topicParts = topic.split('/');
-
-    // 1. Handle Sensor Data
-    if (topicParts.length === 3 && topicParts[2] === 'data') {
-      const deviceId = topicParts[1];
-      try {
-        const data = JSON.parse(message);
-
-        // Broadcast to frontend
-        io.to(deviceId).emit('sensor-data', data);
-        io.to(deviceId).emit('device-status', { online: true });
-
-        // Save to MongoDB
-        const newHistory = new History({
-          deviceId: deviceId,
-          timestamp: data.timestamp || Math.floor(Date.now() / 1000),
-          temp: data.temp,
-          hum: data.hum,
-          soil: data.soil,
-          co2: data.co2,
-          tank_level: data.tank_level,
-          pump: data.pump,
-          fan: data.fan,
-          heater: data.heater,
-          mode: data.mode,
-          version: data.version
-        });
-        await newHistory.save();
-
-      } catch (e) {
-        console.error('Error parsing JSON:', e);
-      }
-    }
-
-    // 2. Handle Alerts
-    if (topicParts.length === 3 && topicParts[2] === 'alerts') {
-      const deviceId = topicParts[1];
-      try {
-        const alertData = JSON.parse(message);
-        console.log(`🚨 ALERT from ${deviceId}:`, alertData);
-        io.to(deviceId).emit('device-alert', alertData);
-
-        // Save to MongoDB
-        const newAlert = new Alert({
-          deviceId: deviceId,
-          timestamp: alertData.timestamp || Math.floor(Date.now() / 1000),
-          alert: alertData.alert,
-          message: alertData.message
-        });
-        await newAlert.save();
-
-      } catch (e) {
-        console.error('Error parsing Alert JSON:', e);
-      }
-    }
-  });
-
-  mqttClient.on('error', (error) => {
-    console.error('❌ MQTT Error:', error);
-  });
-} else {
-  console.log('⚠️ MQTT Credentials missing. Running in Simulation Mode.');
-}
-
-// --- Heartbeat Monitor ---
-setInterval(() => {
-    const now = Date.now();
-    // If no data for 15 seconds, consider device offline
-    if (deviceOnline && (now - lastHeartbeat > 15000)) {
-        deviceOnline = false;
-        io.emit('device-status', { online: false });
-        console.log('⚠️ Device marked OFFLINE (Timeout)');
-    }
-}, 5000);
-
-// --- Socket.io Events (Frontend Communication) ---
-io.on('connection', (socket) => {
-  console.log('👤 Web Client Connected:', socket.id);
-
-  // Handle Device Selection (Login)
-  socket.on('join-device', (deviceId) => {
-      console.log(`Socket ${socket.id} joining device room: ${deviceId}`);
-      socket.join(deviceId); // Join a room named after the Device ID
-      socket.deviceId = deviceId; // Store ID on socket object for reference
-  });
-
-  // Handle Control Commands from Frontend
-  socket.on('control-command', (command) => {
-    if (!socket.deviceId) return; // Ignore if not logged in
-    console.log(`Command for ${socket.deviceId}:`, command);
-    
-    if (mqttClient) {
-        // Publish to specific device topic
-        const topic = `greenhouse/${socket.deviceId}/commands`;
-        mqttClient.publish(topic, JSON.stringify(command));
-    }
-  });
-
-  // Handle Config Updates
-  socket.on('config-update', (config) => {
-    if (!socket.deviceId) return;
-    console.log(`Config Update for ${socket.deviceId}:`, config);
-    
-    // --- Input Validation ---
-    const isValid = (
-        (config.temp_min === undefined || (config.temp_min >= 0 && config.temp_min <= 100)) &&
-        (config.temp_max === undefined || (config.temp_max >= 0 && config.temp_max <= 100)) &&
-        (config.hum_max === undefined || (config.hum_max >= 0 && config.hum_max <= 100)) &&
-        (config.soil_dry === undefined || (config.soil_dry >= 0 && config.soil_dry <= 100)) &&
-        (config.soil_wet === undefined || (config.soil_wet >= 0 && config.soil_wet <= 100)) &&
-        (config.tank_empty_dist === undefined || (config.tank_empty_dist > 0 && config.tank_empty_dist < 1000)) &&
-        (config.tank_full_dist === undefined || (config.tank_full_dist > 0 && config.tank_full_dist < 1000))
-    );
-
-    if (!isValid) {
-        console.error('❌ Invalid Configuration Values Received:', config);
-        socket.emit('config-error', { message: 'Invalid values! Ranges (0 - 100), Tank distance (0 - 1000)'});
-        return; // Do not send to device
-    }
-
-    if (mqttClient) {
-        const topic = `greenhouse/${socket.deviceId}/commands`;
-        mqttClient.publish(topic, JSON.stringify(config));
-    }
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Web Client Disconnected');
-  });
-});
-
-// --- Start Server ---
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Backend running on https://localhost:${PORT}`);
-});
+module.exports = app;

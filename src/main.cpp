@@ -13,6 +13,7 @@
 #include <LittleFS.h>
 #include <HTTPUpdate.h>
 #include <Update.h> // Required for Rollback
+#include <HTTPClient.h>
 #include "secrets.h"
 
 // ==========================================
@@ -1012,12 +1013,35 @@ void TaskConnectivity(void *pvParameters)
                      pumpStatus ? 1 : 0, fanStatus ? 1 : 0, heaterStatus ? 1 : 0,
                      manualMode ? "MANUAL" : "AUTO");
 
-            if (wifiConnected && mqttConnected)
+            if (wifiConnected)
             {
-                char topic[50];
-                snprintf(topic, sizeof(topic), "greenhouse/%s/data", deviceId);
-                client.publish(topic, jsonBuffer);
-                Serial.println("Published Data");
+                // 1. MQTT Publish (Real-Time)
+                if (mqttConnected) {
+                    char topic[50];
+                    snprintf(topic, sizeof(topic), "greenhouse/%s/data", deviceId);
+                    client.publish(topic, jsonBuffer);
+                    Serial.println("Published Data (MQTT)");
+                }
+
+                // 2. HTTP POST (History/DB)
+                HTTPClient http;
+                WiFiClientSecure clientSecure;
+                clientSecure.setInsecure(); // Skip certificate validation for simplicity on ESP32
+                
+                if (http.begin(clientSecure, VERCEL_INGEST_URL)) {
+                    http.addHeader("Content-Type", "application/json");
+                    int httpResponseCode = http.POST(jsonBuffer);
+                    
+                    if (httpResponseCode > 0) {
+                        Serial.printf("HTTP Response code: %d\n", httpResponseCode);
+                    } else {
+                        Serial.printf("HTTP Error code: %s\n", http.errorToString(httpResponseCode).c_str());
+                    }
+                    http.end();
+                } else {
+                    Serial.println("Unable to connect to Vercel");
+                }
+
 
                 // Flush any pending RAM buffer to disk so it can be uploaded
                 if (ramBufferCount > 0)
@@ -1028,7 +1052,7 @@ void TaskConnectivity(void *pvParameters)
             }
             else
             {
-                // If AWS is down (even if WiFi is up), log locally
+                // If External connectivity is down, log locally
                 logDataOffline(jsonBuffer);
             }
             lastDataGen = millis();

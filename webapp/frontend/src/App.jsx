@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Thermometer, Droplets, Wind, Activity, Waves, Plus, Trash2, Edit, LogOut } from 'lucide-react';
-import io from 'socket.io-client';
+import mqtt from 'mqtt';
 import SensorCard from './components/SensorCard';
 import ControlPanel from './components/ControlPanel';
 import ConfigPanel from './components/ConfigPanel';
@@ -9,24 +9,18 @@ import AlertLog from './components/AlertLog';
 import './App.css';
 
 // --- Configuration ---
-// In Development: Connect to Localhost:3001
-// In Production (Vercel): Connect to Render Backend URL
-// We use an Environment Variable for the Render URL
-const RENDER_URL = import.meta.env.VITE_BACKEND_URL || "https://your-app-name.onrender.com"; 
+// 1. Backend API (Vercel) for History/Devices
+const API_URL = import.meta.env.VITE_BACKEND_URL || "https://your-vercel-backend.vercel.app"; 
 
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname.match(/^192\.168\./) || window.location.hostname.match(/^127\./);
-
-const BACKEND_URL = isLocal
-  ? `http://${window.location.hostname}:3001` // Note: Using HTTP for local dev now
-  : RENDER_URL;
-
-const socket = io(BACKEND_URL, {
-  rejectUnauthorized: false, 
-  path: '/socket.io' 
-});
+// 2. MQTT Broker (HiveMQ) for Real-Time Data
+const MQTT_BROKER = "wss://xxxxxxxx.s1.eu.hivemq.cloud:8884/mqtt"; // Must be WSS (Secure WebSocket)
+const MQTT_USER = "esp32_user";
+const MQTT_PASS = "password123";
 
 // Simple User ID for Simulation
 const USER_ID = "default-user";
+
+let mqttClient = null;
 
 function App() {
   const [user, setUser] = useState({ id: USER_ID, username: "Greenhouse Admin" });
@@ -75,7 +69,7 @@ function Dashboard({ user, signOut }) {
 
   const fetchDevices = async () => {
     try {
-      const url = `${BACKEND_URL}/api/devices`;
+      const url = `${API_URL}/api/devices`;
 
       const res = await fetch(url, {
         headers: { "x-user-id": USER_ID }
@@ -87,9 +81,6 @@ function Dashboard({ user, signOut }) {
     }
   };
 
-    }
-  };
-
   const addDevice = async (e) => {
     e.preventDefault();
     const id = e.target.elements.newDeviceId.value.trim();
@@ -97,7 +88,7 @@ function Dashboard({ user, signOut }) {
     if (!id) return;
 
     try {
-      const url = `${BACKEND_URL}/api/devices`;
+      const url = `${API_URL}/api/devices`;
 
       await fetch(url, {
         method: 'POST',
@@ -114,7 +105,7 @@ function Dashboard({ user, signOut }) {
   const removeDevice = async (id) => {
     if (!confirm("Are you sure?")) return;
     try {
-      const url = `${BACKEND_URL}/api/devices/${id}`;
+      const url = `${API_URL}/api/devices/${id}`;
 
       await fetch(url, {
         method: 'DELETE',
@@ -135,7 +126,7 @@ function Dashboard({ user, signOut }) {
     if (!newName || newName === currentName) return;
 
     try {
-      const url = `${BACKEND_URL}/api/devices/${id}`;
+      const url = `${API_URL}/api/devices/${id}`;
 
       await fetch(url, {
         method: 'PUT',
@@ -151,7 +142,6 @@ function Dashboard({ user, signOut }) {
   const selectDevice = (id) => {
     setDeviceId(id);
     setView('dashboard');
-    socket.emit('join-device', id);
   };
 
   // Fetch latest status when device is selected
@@ -165,7 +155,7 @@ function Dashboard({ user, signOut }) {
 
   const fetchDeviceStatus = async (id) => {
     try {
-      const url = `${BACKEND_URL}/api/devices/${id}/status`;
+      const url = `${API_URL}/api/devices/${id}/status`;
 
       const res = await fetch(url, {
         headers: { "x-user-id": USER_ID }
@@ -194,7 +184,7 @@ function Dashboard({ user, signOut }) {
 
   const fetchHistory = async (id, date = null) => {
     try {
-      let url = `${BACKEND_URL}/api/history/${id}`;
+      let url = `${API_URL}/api/history/${id}`;
 
       if (date) {
           const start = Math.floor(new Date(date).setHours(0,0,0,0) / 1000);
@@ -250,7 +240,7 @@ function Dashboard({ user, signOut }) {
 
   const fetchAlerts = async (id) => {
     try {
-      const url = `${BACKEND_URL}/api/alerts/${id}`;
+      const url = `${API_URL}/api/alerts/${id}`;
 
       const res = await fetch(url, {
         headers: { "x-user-id": USER_ID }
@@ -262,77 +252,122 @@ function Dashboard({ user, signOut }) {
     }
   };
 
-  // --- Socket.io Effect ---
+  // --- MQTT Effect (Real-Time Data) ---
   useEffect(() => {
-    if (deviceId) {
-      socket.emit('join-device', deviceId);
-      fetchHistory(deviceId);
-      fetchAlerts(deviceId);
-    }
+    if (!deviceId) return;
 
-    socket.on('connect', () => {
-      setConnected(true);
-      if (deviceId) socket.emit('join-device', deviceId);
-    });
+    fetchHistory(deviceId);
+    fetchAlerts(deviceId);
 
-    socket.on('disconnect', () => {
-      setConnected(false);
-      setDeviceOnline(false);
-    });
-
-    socket.on('device-status', (status) => setDeviceOnline(status.online));
-    socket.on('config-error', (err) => alert(err.message));
+    console.log("Connecting to MQTT Broker:", MQTT_BROKER);
     
-    // Handle Critical Alerts (e.g., Rollback)
-    socket.on('device-alert', (alertData) => {
-        if (alertData.alert === 'ROLLBACK_EXECUTED') {
-            alert(`⚠️ CRITICAL ALERT: ${alertData.message}`);
-        }
-        // Refresh alerts list
-        fetchAlerts(deviceId);
+    // Connect to HiveMQ
+    const client = mqtt.connect(MQTT_BROKER, {
+        username: MQTT_USER,
+        password: MQTT_PASS,
+        protocol: 'wss', // Secure WebSocket
+        keepalive: 60,
     });
 
-    socket.on('sensor-data', (data) => {
-      setSensorData(data);
-      setDevices({ pump: data.pump === 1, fan: data.fan === 1, heater: data.heater === 1 });
-      if (data.mode) setMode(data.mode);
-      setLoading({ pump: false, fan: false, heater: false, mode: false });
-      setHistory(prev => {
-        const newHist = [...prev, {
-          time: new Date(data.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          temp: data.temp, hum: data.hum, soil: data.soil,
-          pump: data.pump ? 1 : 0, fan: data.fan ? 1 : 0, heater: data.heater ? 1 : 0, mode: data.mode
-        }];
-        if (newHist.length > 50) newHist.shift(); // Increased history size
-        return newHist;
-      });
+    client.on('connect', () => {
+        console.log('✅ Connected to HiveMQ (WebSocket)');
+        setConnected(true);
+        // Subscribe to Data and Alerts
+        client.subscribe(`greenhouse/${deviceId}/data`);
+        client.subscribe(`greenhouse/${deviceId}/alerts`);
     });
+    
+    client.on('error', (err) => {
+        console.error('❌ MQTT Error:', err);
+        setConnected(false);
+    });
+
+    client.on('offline', () => {
+        console.log('MQTT Offline');
+        setConnected(false);
+    });
+
+    client.on('message', (topic, message) => {
+        const payload = JSON.parse(message.toString());
+        const topicParts = topic.split('/');
+        // Topic: greenhouse/{deviceId}/type
+        
+        if (topicParts[2] === 'data') {
+             // Update Sensor Data
+             setSensorData(prev => ({ 
+                 ...prev, 
+                 ...payload, 
+                 // If payload.timestamp is current epoch in seconds
+                 timestamp: (payload.timestamp || Date.now() / 1000) * 1000, 
+                 version: payload.version || 'Unknown'
+             }));
+             
+             // Update Device State
+             setDevices({
+                 pump: payload.pump === 1,
+                 fan: payload.fan === 1,
+                 heater: payload.heater === 1
+             });
+             
+             if (payload.mode) setMode(payload.mode);
+             setDeviceOnline(true);
+             setLoading({ pump: false, fan: false, heater: false, mode: false });
+
+             // Update Local History Graph Realtime
+             setHistory(prev => {
+                const newHist = [...prev, {
+                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                  temp: payload.temp, hum: payload.hum, soil: payload.soil,
+                  pump: payload.pump ? 1 : 0, fan: payload.fan ? 1 : 0, heater: payload.heater ? 1 : 0, mode: payload.mode
+                }];
+                if (newHist.length > 50) newHist.shift(); 
+                return newHist;
+              });
+        }
+        
+        if (topicParts[2] === 'alerts') {
+            setAlerts(prev => [payload, ...prev]);
+            alert(`🚨 ALERT: ${payload.alert} - ${payload.message}`);
+        }
+    });
+
+    mqttClient = client;
 
     return () => {
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('device-status');
-      socket.off('config-error');
-      socket.off('device-alert');
-      socket.off('sensor-data');
+       if (client) client.end();
     };
   }, [deviceId]);
 
   // --- Handlers ---
+  const publishCommand = (commandObject) => {
+      if (!mqttClient || !mqttClient.connected) {
+          alert("Device Offline or Not Connected to MQTT");
+          setLoading({ pump: false, fan: false, heater: false, mode: false });
+          return;
+      }
+      mqttClient.publish(`greenhouse/${deviceId}/commands`, JSON.stringify(commandObject));
+  };
+
+
   const handleDeviceToggle = (device) => {
-    if (mode === 'AUTO') return;
+    if (mode === 'AUTO') {
+        alert("Cannot toggle devices in AUTO mode.");
+        return;
+    }
     setLoading(prev => ({ ...prev, [device]: true }));
-    socket.emit('control-command', { [device]: !devices[device] ? 1 : 0 });
+    // 1 for ON, 0 for OFF
+    const newVal = !devices[device] ? 1 : 0;
+    publishCommand({ [device]: newVal });
   };
 
   const handleModeToggle = (newMode) => {
     setLoading(prev => ({ ...prev, mode: true }));
-    socket.emit('control-command', { mode: newMode });
+    publishCommand({ mode: newMode });
   };
 
   const handleConfigSave = (newConfig) => {
     setConfig(newConfig);
-    socket.emit('config-update', newConfig);
+    publishCommand(newConfig);
     alert("Configuration Sent to Device");
   };
 
@@ -340,7 +375,7 @@ function Dashboard({ user, signOut }) {
     if (!url) return;
     if (!confirm(`WARNING: This will update the device firmware from:\n${url}\n\nDo you want to proceed?`)) return;
     
-    socket.emit('control-command', { update_url: url });
+    publishCommand({ update_url: url });
     alert("Update Command Sent! The device will reboot if the update is successful.");
   };
 
