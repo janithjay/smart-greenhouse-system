@@ -292,11 +292,15 @@ These can be updated via the web dashboard or MQTT commands.
 
 ### Backend SSL Certificates (Development)
 
-For HTTPS in development:
+The backend uses HTTPS in development mode. Generate self-signed certificates:
 ```bash
-cd webapp/backend/certs
+cd webapp/backend
+mkdir -p certs
+cd certs
 openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
 ```
+
+**Note:** The frontend is also configured with HTTPS via `@vitejs/plugin-basic-ssl`. You may need to accept the self-signed certificate warnings in your browser during development.
 
 ## 🚀 Usage
 
