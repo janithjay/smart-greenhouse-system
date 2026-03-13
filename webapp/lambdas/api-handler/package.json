@@ -1,0 +1,9 @@
+{
+  "name": "api-handler",
+  "version": "1.0.0",
+  "description": "Lambda: REST API (devices/history/alerts/command) via API Gateway HTTP API",
+  "main": "index.js",
+  "dependencies": {
+    "aws-jwt-verify": "^5.1.1"
+  }
+}
