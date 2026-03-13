@@ -165,8 +165,8 @@ exports.handler = async (event) => {
     const historyMatch = path.match(/^\/history\/([^/]+)$/);
     if (method === 'GET' && historyMatch) {
       const qp        = event.queryStringParameters || {};
-      const startTime = qp.start ? parseInt(qp.start) : Math.floor(Date.now() / 1000) - 86400;
-      const endTime   = qp.end   ? parseInt(qp.end)   : Math.floor(Date.now() / 1000);
+      const startTime = qp.start ? parseInt(qp.start).toString() : (Math.floor(Date.now() / 1000) - 86400).toString();
+      const endTime   = qp.end   ? parseInt(qp.end).toString()   : Math.floor(Date.now() / 1000).toString();
       const data = await dynamo.send(new QueryCommand({
         TableName: HISTORY_TABLE,
         KeyConditionExpression: 'deviceId = :did AND #ts BETWEEN :start AND :end',

@@ -155,6 +155,112 @@ const ConfigPanel = ({ config, onSave, onUpdateFirmware, currentVersion, onViewL
           />
           {errors.tank_full_dist && <span className="error-msg">{errors.tank_full_dist}</span>}
         </div>
+        
+        <hr style={{ borderColor: '#333', margin: '20px 0' }} />
+        <h4 style={{ marginBottom: '15px', color: '#4CAF50' }}>⏱️ Pump Schedules</h4>
+        <div style={{ marginBottom: '20px' }}>
+          {localConfig.schedules && localConfig.schedules.length > 0 ? (
+            localConfig.schedules.map((schedule, i) => (
+              <div key={i} style={{ padding: '10px', background: '#111', border: '1px solid #444', borderRadius: '4px', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontWeight: 'bold', color: '#aaa' }}>Alarm {i + 1}</span>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      const newSchedules = [...localConfig.schedules];
+                      newSchedules.splice(i, 1);
+                      setLocalConfig({...localConfig, schedules: newSchedules});
+                    }}
+                    style={{ background: '#ff4444', color: 'white', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    &times;
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label>ON Time</label>
+                    <input
+                      type="time"
+                      value={schedule.on_time || "08:00"}
+                      onChange={(e) => {
+                        const newSchedules = [...localConfig.schedules];
+                        newSchedules[i] = {...newSchedules[i], on_time: e.target.value};
+                        setLocalConfig({...localConfig, schedules: newSchedules});
+                      }}
+                      style={{ padding: '8px', background: '#222', color: 'white', border: '1px solid #444', borderRadius: '4px', width: '100%' }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label>OFF Time</label>
+                    <input
+                      type="time"
+                      value={schedule.off_time || "08:15"}
+                      onChange={(e) => {
+                        const newSchedules = [...localConfig.schedules];
+                        newSchedules[i] = {...newSchedules[i], off_time: e.target.value};
+                        setLocalConfig({...localConfig, schedules: newSchedules});
+                      }}
+                      style={{ padding: '8px', background: '#222', color: 'white', border: '1px solid #444', borderRadius: '4px', width: '100%' }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.8em', color: '#888' }}>Active Days (0=Sun, 6=Sat):</label>
+                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, dayIdx) => {
+                      const isActive = schedule.days && schedule.days.includes(dayIdx);
+                      return (
+                        <button
+                          key={dayIdx}
+                          type="button"
+                          onClick={() => {
+                            const newSchedules = [...localConfig.schedules];
+                            let currDays = newSchedules[i].days || [];
+                            if (isActive) {
+                              currDays = currDays.filter(d => d !== dayIdx);
+                            } else {
+                              currDays = [...currDays, dayIdx].sort((a,b) => a-b);
+                            }
+                            newSchedules[i] = {...newSchedules[i], days: currDays};
+                            setLocalConfig({...localConfig, schedules: newSchedules});
+                          }}
+                          style={{
+                            background: isActive ? '#4CAF50' : '#333',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '26px',
+                            height: '26px',
+                            fontSize: '0.8em',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div style={{ color: '#888', fontStyle: 'italic', fontSize: '0.9em', textAlign: 'center', padding: '10px' }}>
+              No pump schedules added. Pump will only trigger manually or automatically via soil thresholds.
+            </div>
+          )}
+          <button 
+            type="button"
+            onClick={() => {
+              const newSchedules = [...(localConfig.schedules || [])];
+              newSchedules.push({ on_time: "08:00", off_time: "08:15", days: [0, 1, 2, 3, 4, 5, 6] });
+              setLocalConfig({...localConfig, schedules: newSchedules});
+            }}
+            style={{ width: '100%', padding: '10px', background: '#2196F3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginTop: '5px', fontWeight: 'bold' }}
+          >
+            + Add Pump Alarm
+          </button>
+        </div>
+
         <button type="submit" className="save-btn">
           <Save size={16} style={{ marginRight: '5px' }} /> Save Settings
         </button>

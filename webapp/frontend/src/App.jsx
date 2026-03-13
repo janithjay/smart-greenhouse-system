@@ -48,12 +48,13 @@ function Dashboard({ user, signOut }) {
   });
 
   const [devices, setDevices] = useState({ pump: false, fan: false, heater: false });
-  const [mode, setMode] = useState('AUTO');
+  const [mode, setMode] = useState('MANUAL');
   const [connected, setConnected] = useState(false);
   const [deviceOnline, setDeviceOnline] = useState(false);
   const [config, setConfig] = useState({
     temp_min: 20.0, temp_max: 30.0, hum_max: 75.0, soil_dry: 40, soil_wet: 70,
-    tank_empty_dist: 25, tank_full_dist: 5
+    tank_empty_dist: 25, tank_full_dist: 5,
+    schedules: []
   });
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState({ pump: false, fan: false, heater: false, mode: false });
@@ -121,11 +122,14 @@ function Dashboard({ user, signOut }) {
       setSensorData(data);
       setDevices({ pump: data.pump === 1, fan: data.fan === 1, heater: data.heater === 1 });
       if (data.mode) setMode(data.mode);
+      if (data.schedules) {
+          setConfig(prev => ({ ...prev, schedules: data.schedules }));
+      }
       setLoading({ pump: false, fan: false, heater: false, mode: false });
       setHistory(prev => {
         const newHist = [...prev, {
           time: new Date(data.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          temp: data.temp, hum: data.hum, soil: data.soil,
+          temp: data.temp, hum: data.hum, co2: data.co2, soil: data.soil,
           pump: data.pump ? 1 : 0, fan: data.fan ? 1 : 0, heater: data.heater ? 1 : 0, mode: data.mode
         }];
         if (newHist.length > 50) newHist.shift();
@@ -248,6 +252,9 @@ function Dashboard({ user, signOut }) {
              heater: data.heater === 1
          });
          if (data.mode) setMode(data.mode);
+         if (data.schedules) {
+             setConfig(prev => ({ ...prev, schedules: data.schedules }));
+         }
       }
     } catch (err) {
       console.error("Failed to fetch device status", err);
@@ -266,9 +273,10 @@ function Dashboard({ user, signOut }) {
       
       // Format for graph
       const formatted = data.map(d => ({
-        time: new Date(d.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        time: new Date(parseInt(d.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         temp: d.temp,
         hum: d.hum,
+        co2: d.co2,
         soil: d.soil,
         pump: d.pump ? 1 : 0,
         fan: d.fan ? 1 : 0,
@@ -421,8 +429,8 @@ function Dashboard({ user, signOut }) {
         <section className="sensors-section">
           <SensorCard title="Temperature" value={sensorData.temp} unit="°C" icon={Thermometer} color="#ff7300" />
           <SensorCard title="Humidity" value={sensorData.hum} unit="%" icon={Droplets} color="#387908" />
-          <SensorCard title="Soil Moisture" value={sensorData.soil} unit="%" icon={Waves} color="#0088fe" />
           <SensorCard title="CO2 Level" value={sensorData.co2} unit="ppm" icon={Wind} color="#8884d8" />
+          <SensorCard title="Soil Moisture" value={sensorData.soil} unit="%" icon={Waves} color="#0088fe" />
           <SensorCard title="Tank Level" value={sensorData.tank_level} unit="%" icon={Activity} color="#00C49F" />
         </section>
 
