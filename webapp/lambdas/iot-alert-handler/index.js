@@ -32,7 +32,7 @@ exports.handler = async (event) => {
 
   const topicParts = topicName.split('/');
   const deviceId = topicParts[1];
-  const timestamp = alertData.timestamp || Math.floor(Date.now() / 1000);
+  const timestamp = alertData.timestamp ? alertData.timestamp.toString() : Math.floor(Date.now() / 1000).toString();
 
   console.log(`Alert from ${deviceId}:`, alertData);
 

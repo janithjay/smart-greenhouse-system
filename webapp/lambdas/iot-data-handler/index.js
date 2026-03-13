@@ -35,11 +35,16 @@ exports.handler = async (event) => {
   const timestamp = data.timestamp || Math.floor(Date.now() / 1000);
 
   // Save to DynamoDB
+  // NOTE: DynamoDB expects the sort key (timestamp) to match the table's schema type. 
+  // If the table was created with 'timestamp' as a String (S) but we send a Number (N), it fails.
+  // We explicitly convert timestamp to String here to prevent "Type mismatch" validation errors.
+  const strTimestamp = timestamp.toString();
+
   await dynamo.send(new PutCommand({
     TableName: HISTORY_TABLE,
     Item: {
       deviceId,
-      timestamp,
+      timestamp: strTimestamp,
       temp:       data.temp,
       hum:        data.hum,
       soil:       data.soil,
