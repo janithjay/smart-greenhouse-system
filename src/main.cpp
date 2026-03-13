@@ -31,6 +31,20 @@ int SOIL_WET = 70;                        // Pump OFF above this %
 int TANK_EMPTY_DIST = 25;                 // Distance when tank is empty (cm)
 int TANK_FULL_DIST = 5;                   // Distance when tank is full (cm)
 
+// --- PUMP SCHEDULE PARAMETERS ---
+#define MAX_SCHEDULES 10
+struct PumpSchedule {
+    int on_h;
+    int on_m;
+    int off_h;
+    int off_m;
+    bool days[7];
+    bool active;
+};
+PumpSchedule pumpSchedules[MAX_SCHEDULES];
+int numSchedules = 0;
+String schedulesJson = "[]";
+
 // --- SENSOR CALIBRATION (ESP32 is 12-bit: 0-4095) ---
 int AIR_VAL = 4095;
 int WATER_VAL = 1670;
@@ -75,7 +89,7 @@ volatile bool btnRequest = false;
 bool hasOfflineData = true; // Check on boot
 
 // --- MANUAL MODE VARIABLES ---
-volatile bool manualMode = false;   // false = Auto, true = Manual
+volatile bool manualMode = true;   // false = Auto, true = Manual (Default)
 volatile bool manualPump = false;   // Manual pump state
 volatile bool manualFan = false;    // Manual fan state
 volatile bool manualHeater = false; // Manual heater state
@@ -245,6 +259,57 @@ void messageHandler(char *topic, byte *payload, unsigned int length)
             configChanged = true;
             preferences.putInt("cal_water", WATER_VAL);
         }
+    }
+
+    if (doc.containsKey("schedules"))
+    {
+        JsonArray newArr = doc["schedules"].as<JsonArray>();
+        
+        StaticJsonDocument<1024> newDoc;
+        JsonArray targetArr = newDoc.to<JsonArray>();
+        
+        numSchedules = 0;
+        for (JsonObject s : newArr) {
+            if (numSchedules >= MAX_SCHEDULES) break;
+            
+            String t1 = s["on_time"] | "00:00";
+            String t2 = s["off_time"] | "00:00";
+            
+            PumpSchedule ps;
+            ps.on_h = t1.substring(0, 2).toInt();
+            ps.on_m = t1.substring(3, 5).toInt();
+            ps.off_h = t2.substring(0, 2).toInt();
+            ps.off_m = t2.substring(3, 5).toInt();
+            
+            for (int i = 0; i < 7; i++) ps.days[i] = false;
+            
+            JsonObject sObj = targetArr.createNestedObject();
+            sObj["on_time"] = t1;
+            sObj["off_time"] = t2;
+            JsonArray daysOut = sObj.createNestedArray("days");
+            
+            if (s.containsKey("days")) {
+                JsonArray daysArr = s["days"];
+                for (int d : daysArr) {
+                    if (d >= 0 && d <= 6) {
+                        ps.days[d] = true;
+                        daysOut.add(d);
+                    }
+                }
+            } else {
+                for (int i = 0; i < 7; i++) {
+                    ps.days[i] = true;
+                    daysOut.add(i);
+                }
+            }
+            
+            ps.active = true;
+            pumpSchedules[numSchedules++] = ps;
+        }
+        
+        serializeJson(newDoc, schedulesJson);
+        preferences.putString("schedules", schedulesJson);
+        configChanged = true;
     }
 
     if (configChanged)
@@ -423,6 +488,43 @@ void setup()
     TANK_FULL_DIST = preferences.getInt("tank_full", 5);
     AIR_VAL = preferences.getInt("cal_air", 4095);
     WATER_VAL = preferences.getInt("cal_water", 1670);
+    
+    schedulesJson = preferences.getString("schedules", "[]");
+    
+    // Parse schedules
+    StaticJsonDocument<1024> schDoc;
+    DeserializationError err = deserializeJson(schDoc, schedulesJson);
+    numSchedules = 0;
+    if (!err && schDoc.is<JsonArray>()) {
+        JsonArray arr = schDoc.as<JsonArray>();
+        for (JsonObject s : arr) {
+            if (numSchedules >= MAX_SCHEDULES) break;
+            
+            String t1 = s["on_time"] | "00:00";
+            String t2 = s["off_time"] | "00:00";
+            
+            PumpSchedule ps;
+            ps.on_h = t1.substring(0, 2).toInt();
+            ps.on_m = t1.substring(3, 5).toInt();
+            ps.off_h = t2.substring(0, 2).toInt();
+            ps.off_m = t2.substring(3, 5).toInt();
+            
+            for (int i = 0; i < 7; i++) ps.days[i] = false;
+            
+            if (s.containsKey("days")) {
+                JsonArray daysArr = s["days"];
+                for (int d : daysArr) {
+                    if (d >= 0 && d <= 6) ps.days[d] = true;
+                }
+            } else {
+                // Default all days
+                for (int i = 0; i < 7; i++) ps.days[i] = true;
+            }
+            
+            ps.active = true;
+            pumpSchedules[numSchedules++] = ps;
+        }
+    }
     Serial.println("Config Loaded from NVS");
 
     // 3. Initialize File System
@@ -581,8 +683,32 @@ void TaskControlSystem(void *pvParameters)
         // Check if Manual or Auto mode
         if (manualMode)
         {
+            // ========== PUMP SCHEDULING (Overrides Manual if time matches) ==========
+            struct tm timeinfo;
+            if (getLocalTime(&timeinfo)) {
+                int ch = timeinfo.tm_hour;
+                int cm = timeinfo.tm_min;
+                int wday = timeinfo.tm_wday; // 0=Sun, 6=Sat
+                
+                static int lastProcMinute = -1;
+                if (cm != lastProcMinute) {
+                    lastProcMinute = cm;
+                    for (int i=0; i<numSchedules; i++) {
+                        if (pumpSchedules[i].active && pumpSchedules[i].days[wday]) {
+                            if (ch == pumpSchedules[i].on_h && cm == pumpSchedules[i].on_m) {
+                                manualPump = true;
+                                Serial.printf("Scheduled Pump ON triggered (Sch %d)!\n", i);
+                            } else if (ch == pumpSchedules[i].off_h && cm == pumpSchedules[i].off_m) {
+                                manualPump = false;
+                                Serial.printf("Scheduled Pump OFF triggered (Sch %d)!\n", i);
+                            }
+                        }
+                    }
+                }
+            }
+
             // ========== MANUAL MODE ==========
-            // Directly control based on manual switches from Web App / AWS
+            // Directly control based on manual switches from Web App / AWS / Schedule
             digitalWrite(PIN_PUMP, manualPump ? HIGH : LOW);
             pumpStatus = manualPump;
 
@@ -920,7 +1046,8 @@ void TaskConnectivity(void *pvParameters)
             time_t now = time(nullptr);
             if (now < 8 * 3600 * 2)
             {
-                configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+                // Set to Sri Lanka Time / UTC+5:30 (19800 seconds)
+                configTime(19800, 0, "pool.ntp.org", "time.nist.gov");
             }
 
             if (!client.connected())
@@ -1003,13 +1130,13 @@ void TaskConnectivity(void *pvParameters)
         static unsigned long lastDataGen = 0;
         if (millis() - lastDataGen > 5000)
         {
-            char jsonBuffer[512]; // Increased buffer size
+            char jsonBuffer[1024]; // Increased buffer size to fit array
             snprintf(jsonBuffer, sizeof(jsonBuffer),
-                     "{\"device_id\": \"%s\", \"version\": \"%s\", \"timestamp\": %lu, \"temp\": %.1f, \"hum\": %.1f, \"soil\": %d, \"co2\": %d, \"tvoc\": %d, \"tank_level\": %d, \"pump\": %d, \"fan\": %d, \"heater\": %d, \"mode\": \"%s\"}",
+                     "{\"device_id\": \"%s\", \"version\": \"%s\", \"timestamp\": %lu, \"temp\": %.1f, \"hum\": %.1f, \"soil\": %d, \"co2\": %d, \"tvoc\": %d, \"tank_level\": %d, \"pump\": %d, \"fan\": %d, \"heater\": %d, \"mode\": \"%s\", \"schedules\": %s}",
                      deviceId, FIRMWARE_VERSION, (unsigned long)time(nullptr),
                      currentTemp, currentHum, soilMoisture, eco2, tvoc, waterTankLevel,
                      pumpStatus ? 1 : 0, fanStatus ? 1 : 0, heaterStatus ? 1 : 0,
-                     manualMode ? "MANUAL" : "AUTO");
+                     manualMode ? "MANUAL" : "AUTO", schedulesJson.c_str());
 
             if (wifiConnected && awsConnected)
             {

@@ -118,7 +118,7 @@ const HistoryGraph = ({ data, onDateChange }) => {
 
       {/* 1. Combined Overview */}
       <div className="graph-card" style={{marginBottom: '20px', background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
-        <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Overview</h4>
+        <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Overview (Temp, Hum, CO2)</h4>
         <div style={{ width: '100%', height: 250 }}>
             {(!data || data.length === 0) ? (
                 <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>
@@ -129,12 +129,13 @@ const HistoryGraph = ({ data, onDateChange }) => {
                 <LineChart data={data} syncId="greenhouseGraph">
                     <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                     <XAxis dataKey="time" stroke="#666" tick={{fill: '#666'}} />
-                    <YAxis stroke="#666" tick={{fill: '#666'}} />
+                    <YAxis yAxisId="left" stroke="#666" tick={{fill: '#666'}} />
+                    <YAxis yAxisId="right" orientation="right" stroke="#8884d8" tick={{fill: '#8884d8'}} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
-                    <Line type="monotone" dataKey="temp" stroke="#ff7300" name="Temp (°C)" dot={false} strokeWidth={2} />
-                    <Line type="monotone" dataKey="hum" stroke="#387908" name="Humidity (%)" dot={false} strokeWidth={2} />
-                    <Line type="monotone" dataKey="soil" stroke="#0088fe" name="Soil (%)" dot={false} strokeWidth={2} />
+                    <Line yAxisId="left" type="monotone" dataKey="temp" stroke="#ff7300" name="Temp (°C)" dot={false} strokeWidth={2} />
+                    <Line yAxisId="left" type="monotone" dataKey="hum" stroke="#387908" name="Humidity (%)" dot={false} strokeWidth={2} />
+                    <Line yAxisId="right" type="monotone" dataKey="co2" stroke="#8884d8" name="CO2 (ppm)" dot={false} strokeWidth={2} />
                     <Brush dataKey="time" height={30} stroke="#8884d8" fill="#1a1a1a" />
                 </LineChart>
                 </ResponsiveContainer>
@@ -143,67 +144,64 @@ const HistoryGraph = ({ data, onDateChange }) => {
       </div>
 
       <div className="detailed-graphs">
-        {/* 2. Temperature & Heater */}
-        <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
-            <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Temperature & Heater</h4>
-            <div style={{ width: '100%', height: 200 }}>
+        {/* 2. Temperature History */}
+        <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px', marginBottom: '15px'}}>
+            <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Temperature History</h4>
+            <div style={{ width: '100%', height: 250 }}>
                 {(!data || data.length === 0) ? (
                     <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} syncId="greenhouseGraph">
+                    <LineChart data={data} syncId="greenhouseGraph">
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis dataKey="time" stroke="#666" tick={false} />
-                        <YAxis yAxisId="left" stroke="#666" />
-                        <YAxis yAxisId="right" orientation="right" domain={[0, 1]} hide />
+                        <XAxis dataKey="time" stroke="#666" tick={{fill: '#666'}} />
+                        <YAxis stroke="#666" tick={{fill: '#666'}} />
                         <Tooltip content={<CustomTooltip />} />
-                        <Area yAxisId="left" type="monotone" dataKey="temp" stroke="#ff7300" fill="#ff7300" fillOpacity={0.3} name="Temp (°C)" />
-                        <Area yAxisId="right" type="step" dataKey="heater" stroke="none" fill="#ff0000" fillOpacity={0.15} name="Heater Status" />
-                    </AreaChart>
+                        <Line type="monotone" dataKey="temp" stroke="#ff7300" name="Temp (°C)" dot={false} strokeWidth={2} />
+                        <Brush dataKey="time" height={30} stroke="#ff7300" fill="#1a1a1a" />
+                    </LineChart>
                     </ResponsiveContainer>
                 )}
             </div>
         </div>
 
-        {/* 3. Humidity & Fan */}
-        <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
-            <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Humidity & Fan</h4>
-            <div style={{ width: '100%', height: 200 }}>
+        {/* 3. Humidity History */}
+        <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px', marginBottom: '15px'}}>
+            <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Humidity History</h4>
+            <div style={{ width: '100%', height: 250 }}>
                 {(!data || data.length === 0) ? (
                     <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} syncId="greenhouseGraph">
+                    <LineChart data={data} syncId="greenhouseGraph">
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis dataKey="time" stroke="#666" tick={false} />
-                        <YAxis yAxisId="left" stroke="#666" />
-                        <YAxis yAxisId="right" orientation="right" domain={[0, 1]} hide />
+                        <XAxis dataKey="time" stroke="#666" tick={{fill: '#666'}} />
+                        <YAxis stroke="#666" tick={{fill: '#666'}} />
                         <Tooltip content={<CustomTooltip />} />
-                        <Area yAxisId="left" type="monotone" dataKey="hum" stroke="#387908" fill="#387908" fillOpacity={0.3} name="Humidity (%)" />
-                        <Area yAxisId="right" type="step" dataKey="fan" stroke="none" fill="#00ff00" fillOpacity={0.15} name="Fan Status" />
-                    </AreaChart>
+                        <Line type="monotone" dataKey="hum" stroke="#387908" name="Humidity (%)" dot={false} strokeWidth={2} />
+                        <Brush dataKey="time" height={30} stroke="#387908" fill="#1a1a1a" />
+                    </LineChart>
                     </ResponsiveContainer>
                 )}
             </div>
         </div>
 
-        {/* 4. Soil & Pump */}
-        <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px'}}>
-            <h4 style={{textAlign: 'center', marginBottom: '15px'}}>Soil Moisture & Pump</h4>
-            <div style={{ width: '100%', height: 200 }}>
+        {/* 4. CO2 History */}
+        <div className="graph-card" style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px', marginBottom: '15px'}}>
+            <h4 style={{textAlign: 'center', marginBottom: '15px'}}>CO2 Levels History</h4>
+            <div style={{ width: '100%', height: 250 }}>
                 {(!data || data.length === 0) ? (
                     <div style={{height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666'}}>No Data</div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} syncId="greenhouseGraph">
+                    <LineChart data={data} syncId="greenhouseGraph">
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis dataKey="time" stroke="#666" tick={false} />
-                        <YAxis yAxisId="left" stroke="#666" />
-                        <YAxis yAxisId="right" orientation="right" domain={[0, 1]} hide />
+                        <XAxis dataKey="time" stroke="#666" tick={{fill: '#666'}} />
+                        <YAxis stroke="#666" tick={{fill: '#666'}} />
                         <Tooltip content={<CustomTooltip />} />
-                        <Area yAxisId="left" type="monotone" dataKey="soil" stroke="#0088fe" fill="#0088fe" fillOpacity={0.3} name="Soil (%)" />
-                        <Area yAxisId="right" type="step" dataKey="pump" stroke="none" fill="#0000ff" fillOpacity={0.15} name="Pump Status" />
-                    </AreaChart>
+                        <Line type="monotone" dataKey="co2" stroke="#8884d8" name="CO2 (ppm)" dot={false} strokeWidth={2} />
+                        <Brush dataKey="time" height={30} stroke="#8884d8" fill="#1a1a1a" />
+                    </LineChart>
                     </ResponsiveContainer>
                 )}
             </div>
