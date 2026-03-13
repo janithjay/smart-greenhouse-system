@@ -1,0 +1,9 @@
+{
+  "name": "iot-data-handler",
+  "version": "1.0.0",
+  "description": "Lambda: saves ESP32 sensor data to DynamoDB and pushes to Pusher",
+  "main": "index.js",
+  "dependencies": {
+    "pusher": "^5.2.0"
+  }
+}

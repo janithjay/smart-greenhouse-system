@@ -13,11 +13,17 @@ src/secrets.h
 webapp/frontend/dist
 webapp/frontend/.env
 webapp/frontend/.env.*
+!webapp/frontend/.env.example
 webapp/backend/.env
 webapp/coverage
 webapp/npm-debug.log*
 webapp/yarn-debug.log*
 webapp/yarn-error.log*
+
+# Serverless / AWS Lambdas
+webapp/lambdas/*/node_modules
+webapp/lambdas/*.zip
+*.zip
 
 # OS
 .DS_Store

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Thermometer, Droplets, Wind, Activity, Waves, Plus, Trash2, Edit } from 'lucide-react';
-import io from 'socket.io-client';
-import { Authenticator, useAuthenticator, View, Button, Heading } from '@aws-amplify/ui-react';
+import Pusher from 'pusher-js';
+import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
-import { fetchAuthSession, signInWithRedirect } from 'aws-amplify/auth';
+import { fetchAuthSession } from 'aws-amplify/auth';
 import SensorCard from './components/SensorCard';
 import ControlPanel from './components/ControlPanel';
 import ConfigPanel from './components/ConfigPanel';
@@ -13,19 +13,29 @@ import './App.css';
 import './AuthStyles.css';
 import { signOut as amplifySignOut } from 'aws-amplify/auth';
 
+// API Gateway URL (set VITE_API_URL in .env / Amplify env vars)
+// For local development, point to the old server: https://localhost:3001
+const API_URL      = import.meta.env.VITE_API_URL      || 'https://localhost:3001';
+const PUSHER_KEY     = import.meta.env.VITE_PUSHER_KEY;
+const PUSHER_CLUSTER = import.meta.env.VITE_PUSHER_CLUSTER || 'ap1';
 
-// Connect to Backend
-// In Production (Amplify), we use Rewrites to proxy requests to EC2, so we connect to the same origin.
-// In Development (Localhost), we connect directly to port 3001.
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname.match(/^192\.168\./) || window.location.hostname.match(/^127\./);
-const BACKEND_URL = isLocal
-  ? `https://${window.location.hostname}:3001`
-  : window.location.origin;
+async function getToken() {
+  const session = await fetchAuthSession();
+  return session.tokens.idToken.toString();
+}
 
-const socket = io(BACKEND_URL, {
-  rejectUnauthorized: false, // Allow self-signed certs in dev
-  path: '/socket.io' // Standard Socket.io path
-});
+async function apiCall(path, options = {}) {
+  const token = await getToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: token,
+      ...(options.headers || {})
+    }
+  });
+  return res.json();
+}
 
 function Dashboard({ user, signOut }) {
   // --- State ---
@@ -49,6 +59,11 @@ function Dashboard({ user, signOut }) {
   const [loading, setLoading] = useState({ pump: false, fan: false, heater: false, mode: false });
   const [showAlerts, setShowAlerts] = useState(false);
   const [alerts, setAlerts] = useState([]);
+
+  // --- Pusher refs ---
+  const pusherRef   = useRef(null);
+  const channelRef  = useRef(null);
+  const lastDataRef = useRef(0); // epoch ms of last received Pusher event
 
   // --- Fetch Devices on Load ---
   useEffect(() => {
@@ -83,19 +98,72 @@ function Dashboard({ user, signOut }) {
     return () => clearInterval(interval);
   }, [signOut]);
 
+  // --- Pusher: subscribe when device is selected ---
+  useEffect(() => {
+    if (!deviceId || !PUSHER_KEY) return;
+
+    // Disconnect any previous connection
+    if (pusherRef.current) {
+      pusherRef.current.disconnect();
+    }
+
+    const pusher = new Pusher(PUSHER_KEY, { cluster: PUSHER_CLUSTER });
+    pusherRef.current = pusher;
+
+    pusher.connection.bind('connected',    () => setConnected(true));
+    pusher.connection.bind('disconnected', () => { setConnected(false); setDeviceOnline(false); });
+
+    const channel = pusher.subscribe(`greenhouse-${deviceId}`);
+    channelRef.current = channel;
+
+    channel.bind('sensor-data', (data) => {
+      lastDataRef.current = Date.now();
+      setSensorData(data);
+      setDevices({ pump: data.pump === 1, fan: data.fan === 1, heater: data.heater === 1 });
+      if (data.mode) setMode(data.mode);
+      setLoading({ pump: false, fan: false, heater: false, mode: false });
+      setHistory(prev => {
+        const newHist = [...prev, {
+          time: new Date(data.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          temp: data.temp, hum: data.hum, soil: data.soil,
+          pump: data.pump ? 1 : 0, fan: data.fan ? 1 : 0, heater: data.heater ? 1 : 0, mode: data.mode
+        }];
+        if (newHist.length > 50) newHist.shift();
+        return newHist;
+      });
+    });
+
+    channel.bind('device-status', (status) => {
+      if (status.online) lastDataRef.current = Date.now();
+      setDeviceOnline(status.online);
+    });
+
+    channel.bind('device-alert', (alertData) => {
+      if (alertData.alert === 'ROLLBACK_EXECUTED') {
+        alert(`⚠️ CRITICAL ALERT: ${alertData.message}`);
+      }
+      fetchAlerts(deviceId);
+    });
+
+    // Mark device offline if no Pusher data for 30 seconds
+    const offlineTimer = setInterval(() => {
+      if (lastDataRef.current > 0 && Date.now() - lastDataRef.current > 30000) {
+        setDeviceOnline(false);
+      }
+    }, 5000);
+
+    return () => {
+      clearInterval(offlineTimer);
+      channel.unbind_all();
+      pusher.unsubscribe(`greenhouse-${deviceId}`);
+      pusher.disconnect();
+    };
+  }, [deviceId]);
+
   const fetchDevices = async () => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices`
-        : `${window.location.origin}/api/devices`;
-
-      const res = await fetch(url, {
-        headers: { Authorization: token }
-      });
-      const data = await res.json();
-      setUserDevices(data);
+      const data = await apiCall('/devices');
+      setUserDevices(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to fetch devices", err);
     }
@@ -108,15 +176,8 @@ function Dashboard({ user, signOut }) {
     if (!id) return;
 
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices`
-        : `${window.location.origin}/api/devices`;
-
-      await fetch(url, {
+      await apiCall('/devices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: token },
         body: JSON.stringify({ deviceId: id, name })
       });
       fetchDevices();
@@ -129,16 +190,7 @@ function Dashboard({ user, signOut }) {
   const removeDevice = async (id) => {
     if (!confirm("Are you sure?")) return;
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices/${id}`
-        : `${window.location.origin}/api/devices/${id}`;
-
-      await fetch(url, {
-        method: 'DELETE',
-        headers: { Authorization: token }
-      });
+      await apiCall(`/devices/${id}`, { method: 'DELETE' });
       fetchDevices();
       if (deviceId === id) {
         setDeviceId('');
@@ -154,15 +206,8 @@ function Dashboard({ user, signOut }) {
     if (!newName || newName === currentName) return;
 
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices/${id}`
-        : `${window.location.origin}/api/devices/${id}`;
-
-      await fetch(url, {
+      await apiCall(`/devices/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: token },
         body: JSON.stringify({ name: newName })
       });
       fetchDevices();
@@ -174,7 +219,8 @@ function Dashboard({ user, signOut }) {
   const selectDevice = (id) => {
     setDeviceId(id);
     setView('dashboard');
-    socket.emit('join-device', id);
+    setDeviceOnline(false);
+    lastDataRef.current = 0;
   };
 
   // Fetch latest status when device is selected
@@ -188,25 +234,14 @@ function Dashboard({ user, signOut }) {
 
   const fetchDeviceStatus = async (id) => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/devices/${id}/status`
-        : `${window.location.origin}/api/devices/${id}/status`;
-
-      const res = await fetch(url, {
-        headers: { Authorization: token }
-      });
-      const data = await res.json();
-      
+      const data = await apiCall(`/devices/${id}/status`);
       if (data && data.timestamp) {
          setSensorData(prev => ({ 
              ...prev, 
              ...data, 
-             timestamp: data.timestamp * 1000, // Convert to ms
-             version: data.version || 'Unknown' // Set Version
+             timestamp: data.timestamp * 1000,
+             version: data.version || 'Unknown'
          }));
-         
          setDevices({
              pump: data.pump === 1,
              fan: data.fan === 1,
@@ -221,22 +256,13 @@ function Dashboard({ user, signOut }) {
 
   const fetchHistory = async (id, date = null) => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      let url = isLocal
-        ? `https://${window.location.hostname}:3001/api/history/${id}`
-        : `${window.location.origin}/api/history/${id}`;
-
+      let url = `/history/${id}`;
       if (date) {
           const start = Math.floor(new Date(date).setHours(0,0,0,0) / 1000);
           const end = Math.floor(new Date(date).setHours(23,59,59,999) / 1000);
           url += `?start=${start}&end=${end}`;
       }
-
-      const res = await fetch(url, {
-        headers: { Authorization: token }
-      });
-      const data = await res.json();
+      const data = await apiCall(url);
       
       // Format for graph
       const formatted = data.map(d => ({
@@ -281,93 +307,45 @@ function Dashboard({ user, signOut }) {
 
   const fetchAlerts = async (id) => {
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens.idToken.toString();
-      const url = isLocal
-        ? `https://${window.location.hostname}:3001/api/alerts/${id}`
-        : `${window.location.origin}/api/alerts/${id}`;
-
-      const res = await fetch(url, {
-        headers: { Authorization: token }
-      });
-      const data = await res.json();
-      setAlerts(data);
+      const data = await apiCall(`/alerts/${id}`);
+      setAlerts(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to fetch alerts", err);
     }
   };
 
-  // --- Socket.io Effect ---
-  useEffect(() => {
-    if (deviceId) {
-      socket.emit('join-device', deviceId);
-      fetchHistory(deviceId);
-      fetchAlerts(deviceId);
-    }
-
-    socket.on('connect', () => {
-      setConnected(true);
-      if (deviceId) socket.emit('join-device', deviceId);
-    });
-
-    socket.on('disconnect', () => {
-      setConnected(false);
-      setDeviceOnline(false);
-    });
-
-    socket.on('device-status', (status) => setDeviceOnline(status.online));
-    socket.on('config-error', (err) => alert(err.message));
-    
-    // Handle Critical Alerts (e.g., Rollback)
-    socket.on('device-alert', (alertData) => {
-        if (alertData.alert === 'ROLLBACK_EXECUTED') {
-            alert(`⚠️ CRITICAL ALERT: ${alertData.message}`);
-        }
-        // Refresh alerts list
-        fetchAlerts(deviceId);
-    });
-
-    socket.on('sensor-data', (data) => {
-      setSensorData(data);
-      setDevices({ pump: data.pump === 1, fan: data.fan === 1, heater: data.heater === 1 });
-      if (data.mode) setMode(data.mode);
-      setLoading({ pump: false, fan: false, heater: false, mode: false });
-      setHistory(prev => {
-        const newHist = [...prev, {
-          time: new Date(data.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          temp: data.temp, hum: data.hum, soil: data.soil,
-          pump: data.pump ? 1 : 0, fan: data.fan ? 1 : 0, heater: data.heater ? 1 : 0, mode: data.mode
-        }];
-        if (newHist.length > 50) newHist.shift(); // Increased history size
-        return newHist;
+  // --- Send command/config to device via API Gateway → Lambda → IoT Core ---
+  const sendCommand = async (command) => {
+    try {
+      const result = await apiCall('/command', {
+        method: 'POST',
+        body: JSON.stringify({ deviceId, ...command })
       });
-    });
-
-    return () => {
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('device-status');
-      socket.off('config-error');
-      socket.off('device-alert');
-      socket.off('sensor-data');
-    };
-  }, [deviceId]);
+      if (result.error) {
+        alert(`Command error: ${result.error}`);
+        setLoading({ pump: false, fan: false, heater: false, mode: false });
+      }
+    } catch (err) {
+      alert("Failed to send command");
+      setLoading({ pump: false, fan: false, heater: false, mode: false });
+    }
+  };
 
   // --- Handlers ---
   const handleDeviceToggle = (device) => {
     if (mode === 'AUTO') return;
     setLoading(prev => ({ ...prev, [device]: true }));
-    socket.emit('control-command', { [device]: !devices[device] ? 1 : 0 });
+    sendCommand({ [device]: !devices[device] ? 1 : 0 });
   };
 
   const handleModeToggle = (newMode) => {
     setLoading(prev => ({ ...prev, mode: true }));
-    socket.emit('control-command', { mode: newMode });
+    sendCommand({ mode: newMode });
   };
 
   const handleConfigSave = (newConfig) => {
     setConfig(newConfig);
-    socket.emit('config-update', newConfig);
+    sendCommand(newConfig);
     alert("Configuration Sent to Device");
   };
 
@@ -375,7 +353,7 @@ function Dashboard({ user, signOut }) {
     if (!url) return;
     if (!confirm(`WARNING: This will update the device firmware from:\n${url}\n\nDo you want to proceed?`)) return;
     
-    socket.emit('control-command', { update_url: url });
+    sendCommand({ update_url: url });
     alert("Update Command Sent! The device will reboot if the update is successful.");
   };
 
@@ -474,7 +452,7 @@ function Dashboard({ user, signOut }) {
 function App() {
   return (
     <div className="auth-wrapper">
-      <Authenticator>
+      <Authenticator hideSignUp={true}>
         {({ signOut, user }) => (
           <Dashboard
             user={user}
