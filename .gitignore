@@ -5,16 +5,12 @@
 .vscode/ipch
 src/secrets.h
 /webapp/frontend/node_modules
-/webapp/backend/node_modules
-/webapp/backend/certs/*
-!/webapp/backend/certs/.gitkeep
 
 # Webapp (Vite/React)
 webapp/frontend/dist
 webapp/frontend/.env
 webapp/frontend/.env.*
 !webapp/frontend/.env.example
-webapp/backend/.env
 webapp/coverage
 webapp/npm-debug.log*
 webapp/yarn-debug.log*
@@ -29,6 +25,4 @@ webapp/lambdas/*.zip
 .DS_Store
 Thumbs.db
 
-deploy-ec2.sh
-nginx.conf
 /Greenhouse keys iot
